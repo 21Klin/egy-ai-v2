@@ -1,4 +1,7 @@
 "use client";
+
+export const runtime = 'edge';
+
 import { useEffect, useState } from "react";
 import { getPublicProfile, type UserProfile } from "@/lib/firestore";
 import Link from "next/link";
@@ -8,16 +11,12 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("🔍 Loading public profile for UID:", params.uid);
-    
     getPublicProfile(params.uid)
       .then((p) => {
-        console.log("📦 Public profile data:", p);
         setProfile(p);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error("❌ Error loading public profile:", err);
+      .catch(() => {
         setLoading(false);
       });
   }, [params.uid]);
@@ -62,7 +61,6 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
     <div className="circuit-grid min-h-[calc(100vh-5rem)] bg-slate-950 px-4 py-10 text-slate-50">
       <div className="relative z-10 mx-auto max-w-3xl space-y-6">
 
-        {/* PROFILE HEADER */}
         <section className="flex flex-col items-center gap-4 text-center">
           <div className="relative">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-purple-500 text-3xl font-bold text-slate-950 shadow-lg shadow-purple-500/30">
@@ -82,7 +80,6 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
           </div>
         </section>
 
-        {/* STATS */}
         {visibleStats.length > 0 ? (
           <section>
             <h2 className="mb-3 text-center font-data text-[10px] uppercase tracking-[0.2em] text-slate-500">
@@ -106,7 +103,6 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
           </section>
         )}
 
-        {/* BOT ADVANCEMENT */}
         <section className="data-flow-border rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-100">Bot Advancement</h2>
           <div className="mb-2 flex justify-between font-data text-xs text-slate-400">
