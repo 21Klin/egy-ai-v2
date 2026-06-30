@@ -128,7 +128,7 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
     const longSignal = fast[i] > slow[i] && rsiVals[i] < genome.rsiHigh;
     const shortSignal = fast[i] < slow[i];
 
-    const prevPosition = position;
+    const prevPosition: -1 | 0 | 1 = position;
     if (longSignal) position = 1;
     else if (shortSignal) position = -1;
 
