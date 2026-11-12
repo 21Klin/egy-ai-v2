@@ -14,6 +14,16 @@
  *   - drawdown-penalized, fee-adjusted fitness (was missing)
  *   - mutation actually applied to children (was defined but unused)
  *   - persistent run across page loads via localStorage snapshot
+ *   - globally unique lineage ids + parent tracking + origin tags
+ *   - rsiLow actually used in the trading rule
+ *   - every genome backtested over the same window regardless of
+ *     its own slowMa, so fitness is comparable across the population
+ *   - a finite fitness floor instead of -Infinity (which silently
+ *     corrupted saved snapshots: JSON.stringify(-Infinity) === "null")
+ *   - a train/test split so "best fitness" can't just mean "best at
+ *     memorizing the data it was scored on"
+ *   - population diversity tracking + a few random immigrants each
+ *     generation, to fight premature convergence
  */
 
 export type Genome = {
@@ -24,29 +34,64 @@ export type Genome = {
   rsiHigh: number;
 };
 
+export type Origin = "random" | "crossover" | "mutation" | "elite" | "immigrant";
+
 export type Individual = {
-  id: number;
+  /** Globally unique across the whole run, e.g. "g14-7" (generation 14, slot 7). Never reused. */
+  id: string;
   genome: Genome;
+  /** Fitness on the TRAIN window only — never on data used to pick the next generation's winners. */
   fitness: number;
   netEquity: number;
   maxDrawdown: number;
   trades: number;
+  /** [] for the very first generation and for immigrants; one id for a mutation-only child; two for crossover; one (itself) for an elite carried over unchanged. */
+  parentIds: string[];
+  bornGeneration: number;
+  origin: Origin;
+};
+
+export type GenerationHistoryEntry = {
+  generation: number;
+  bestFitness: number;
+  avgFitness: number;
+  worstFitness: number;
+  /** The generation's best genome scored on the UNSEEN test window — never used for selection. */
+  testEquity: number;
+  /** Buy-and-hold return over that same test window, for comparison. */
+  buyAndHoldEquity: number;
+  diversity: number;
+  blockedCount: number;
 };
 
 export type GenerationSnapshot = {
   generation: number;
   population: Individual[];
-  bestEverFitness: number;
+  bestEverFitness: number | null;
   bestEverGenome: Genome;
   lastSignal: { action: "buy" | "sell" | "hold"; price: number; time: number };
   log: { time: number; message: string }[];
+  history: GenerationHistoryEntry[];
 };
 
 const POPULATION_SIZE = 24;
 const ELITE_COUNT = 4;
+const IMMIGRANT_COUNT = 3;
 const TOURNAMENT_SIZE = 5;
 const MUTATION_RATE = 0.25;
+const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has collapsed
+const DIVERSITY_FLOOR = 0.08; // below this, raise mutation to fight premature convergence
 const TRANSACTION_COST = 0.0010; // 0.10%, matches Binance taker fee
+export const TRAIN_RATIO = 0.7;
+
+/** Every genome is backtested starting from this same bar index, regardless of its own slowMa,
+ *  so two genomes' fitness scores are comparable (neither gets a head start or a shorter window). */
+export const MAX_POSSIBLE_SLOW_MA = 24 /* max fastMa */ + 10 + 49 /* max extra in randomGenome */;
+
+/** A finite, sentinel-free floor for genomes that can't be backtested at all (e.g. fastMa >= slowMa, or
+ *  not enough candles). -Infinity used to serve this role, but JSON.stringify(-Infinity) === "null",
+ *  which silently corrupted every saved snapshot that contained one. */
+export const FITNESS_FLOOR = -1;
 
 export function randomGenome(): Genome {
   const fastMa = 5 + Math.floor(Math.random() * 20); // 5-24
@@ -106,10 +151,16 @@ function rsi(closes: number[], period: number): number[] {
  * drawdown, and gives a small bonus for consistency. This directly
  * mirrors the upgraded Python fitness function so both engines agree
  * on what "good" means.
+ *
+ * Every genome starts its backtest at the SAME bar index
+ * (MAX_POSSIBLE_SLOW_MA), not at its own slowMa + 1 — otherwise a
+ * genome with a short slowMa gets more bars to trade (and more
+ * chances to compound) than one with a long slowMa, which isn't a
+ * fair comparison for fitness/selection purposes.
  */
 export function evaluateGenome(genome: Genome, closes: number[]): { fitness: number; netEquity: number; maxDrawdown: number; trades: number; lastPosition: -1 | 0 | 1 } {
-  if (genome.fastMa >= genome.slowMa || closes.length < genome.slowMa + 5) {
-    return { fitness: -Infinity, netEquity: 1, maxDrawdown: 0, trades: 0, lastPosition: 0 };
+  if (genome.fastMa >= genome.slowMa || closes.length < MAX_POSSIBLE_SLOW_MA + 5) {
+    return { fitness: FITNESS_FLOOR, netEquity: 1, maxDrawdown: 0, trades: 0, lastPosition: 0 };
   }
 
   const fast = sma(closes, genome.fastMa);
@@ -122,11 +173,17 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
   let maxDrawdown = 0;
   let trades = 0;
 
-  for (let i = genome.slowMa + 1; i < closes.length; i++) {
+  for (let i = MAX_POSSIBLE_SLOW_MA; i < closes.length; i++) {
     if (Number.isNaN(fast[i]) || Number.isNaN(slow[i]) || Number.isNaN(rsiVals[i])) continue;
 
-    const longSignal = fast[i] > slow[i] && rsiVals[i] < genome.rsiHigh;
-    const shortSignal = fast[i] < slow[i];
+    // rsiLow gates BOTH directions: a long only counts when RSI is between
+    // rsiLow and rsiHigh (confirms real bullish strength, not a blip inside
+    // a hard sell-off), and a short is avoided once RSI has already fallen
+    // below rsiLow (don't pile on more downside into an already-oversold
+    // market — that's where trend-followers most often get caught by a
+    // sharp reversal).
+    const longSignal = fast[i] > slow[i] && rsiVals[i] > genome.rsiLow && rsiVals[i] < genome.rsiHigh;
+    const shortSignal = fast[i] < slow[i] && rsiVals[i] > genome.rsiLow;
 
     const prevPosition: -1 | 0 | 1 = position;
     if (longSignal) position = 1;
@@ -144,9 +201,23 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
   }
 
   const drawdownPenalty = maxDrawdown * 2.0;
-  const fitness = equity - drawdownPenalty;
+  const fitness = Math.max(FITNESS_FLOOR, equity - drawdownPenalty);
 
   return { fitness, netEquity: equity, maxDrawdown, trades, lastPosition: position };
+}
+
+/** Buy-and-hold equity over the same closes, for comparison against the bot. */
+export function buyAndHoldEquity(closes: number[]): number {
+  if (closes.length < 2 || closes[0] <= 0) return 1;
+  return closes[closes.length - 1] / closes[0];
+}
+
+/** Chronological 70/30 split: the GA only ever evolves on `train`; `test` is
+ *  never used for selection, only to report how the champion does on data
+ *  it has never seen. */
+export function splitTrainTest(closes: number[], trainRatio = TRAIN_RATIO): { train: number[]; test: number[] } {
+  const cut = Math.floor(closes.length * trainRatio);
+  return { train: closes.slice(0, cut), test: closes.slice(cut) };
 }
 
 function tournamentPick(pop: Individual[]): Individual {
@@ -171,73 +242,134 @@ function crossover(a: Genome, b: Genome): Genome {
   return child;
 }
 
-function mutate(g: Genome): Genome {
+function mutate(g: Genome, mutationRate: number = MUTATION_RATE): Genome {
   const mutated = { ...g };
-  if (Math.random() < MUTATION_RATE) mutated.fastMa = Math.max(3, mutated.fastMa + Math.floor(Math.random() * 11 - 5));
-  if (Math.random() < MUTATION_RATE) mutated.slowMa = Math.max(mutated.fastMa + 5, mutated.slowMa + Math.floor(Math.random() * 21 - 10));
-  if (Math.random() < MUTATION_RATE) mutated.rsiPeriod = Math.min(30, Math.max(5, mutated.rsiPeriod + Math.floor(Math.random() * 5 - 2)));
-  if (Math.random() < MUTATION_RATE) mutated.rsiLow = Math.min(45, Math.max(10, mutated.rsiLow + Math.floor(Math.random() * 5 - 2)));
-  if (Math.random() < MUTATION_RATE) mutated.rsiHigh = Math.min(90, Math.max(55, mutated.rsiHigh + Math.floor(Math.random() * 5 - 2)));
+  if (Math.random() < mutationRate) mutated.fastMa = Math.max(3, mutated.fastMa + Math.floor(Math.random() * 11 - 5));
+  if (Math.random() < mutationRate) mutated.slowMa = Math.max(mutated.fastMa + 5, mutated.slowMa + Math.floor(Math.random() * 21 - 10));
+  if (Math.random() < mutationRate) mutated.rsiPeriod = Math.min(30, Math.max(5, mutated.rsiPeriod + Math.floor(Math.random() * 5 - 2)));
+  if (Math.random() < mutationRate) mutated.rsiLow = Math.min(45, Math.max(10, mutated.rsiLow + Math.floor(Math.random() * 5 - 2)));
+  if (Math.random() < mutationRate) mutated.rsiHigh = Math.min(90, Math.max(55, mutated.rsiHigh + Math.floor(Math.random() * 5 - 2)));
   return mutated;
 }
 
+// Roughly the actual range each gene can take across randomGenome() + drift
+// from mutation, used only to normalize distances for diversity tracking.
+const GENE_RANGES: Record<keyof Genome, [number, number]> = {
+  fastMa: [3, 60],
+  slowMa: [10, 160],
+  rsiPeriod: [5, 30],
+  rsiLow: [10, 45],
+  rsiHigh: [55, 90],
+};
+
+function normalizedDistance(a: Genome, b: Genome): number {
+  const keys = Object.keys(GENE_RANGES) as (keyof Genome)[];
+  let sumSq = 0;
+  for (const key of keys) {
+    const [lo, hi] = GENE_RANGES[key];
+    const range = hi - lo || 1;
+    const diff = (a[key] - b[key]) / range;
+    sumSq += diff * diff;
+  }
+  return Math.sqrt(sumSq / keys.length);
+}
+
+/** Average pairwise normalized genome distance across the population — a proxy for
+ *  how converged (low) or spread out (high) the gene pool currently is. */
+export function populationDiversity(population: Individual[]): number {
+  if (population.length < 2) return 0;
+  let total = 0;
+  let count = 0;
+  for (let i = 0; i < population.length; i++) {
+    for (let j = i + 1; j < population.length; j++) {
+      total += normalizedDistance(population[i].genome, population[j].genome);
+      count++;
+    }
+  }
+  return count > 0 ? total / count : 0;
+}
+
+function freshIndividual(id: string, genome: Genome, bornGeneration: number, origin: Origin, parentIds: string[]): Individual {
+  return { id, genome, fitness: 0, netEquity: 1, maxDrawdown: 0, trades: 0, parentIds, bornGeneration, origin };
+}
+
 export function initialPopulation(): Individual[] {
-  return Array.from({ length: POPULATION_SIZE }, (_, i) => ({
-    id: i,
-    genome: randomGenome(),
-    fitness: 0,
-    netEquity: 1,
-    maxDrawdown: 0,
-    trades: 0,
-  }));
+  return Array.from({ length: POPULATION_SIZE }, (_, i) => freshIndividual(`g0-${i}`, randomGenome(), 0, "random", []));
 }
 
 /**
- * Runs ONE full generation: evaluate every individual against real
- * closes, then produce the next generation via elitism + tournament
- * selection + crossover + mutation.
+ * Runs ONE full generation: evaluate every individual against the TRAIN
+ * window, then produce the next generation via elitism + a few random
+ * immigrants (to fight premature convergence) + tournament selection +
+ * crossover/mutation. Separately scores the generation's best genome
+ * against the TEST window (never used for selection) and against
+ * buy-and-hold, so a learning curve can show whether the bot is actually
+ * getting better at unseen data, not just memorizing the train window.
  */
 export function evolveGeneration(
   population: Individual[],
-  closes: number[],
-  currentPrice: number
-): { nextPopulation: Individual[]; best: Individual; signal: { action: "buy" | "sell" | "hold"; price: number } } {
+  trainCloses: number[],
+  testCloses: number[],
+  currentPrice: number,
+  generation: number
+): {
+  nextPopulation: Individual[];
+  best: Individual;
+  signal: { action: "buy" | "sell" | "hold"; price: number };
+  historyEntry: GenerationHistoryEntry;
+} {
   const evaluated: Individual[] = population.map((ind) => {
-    const result = evaluateGenome(ind.genome, closes);
-    return {
-      ...ind,
-      fitness: result.fitness,
-      netEquity: result.netEquity,
-      maxDrawdown: result.maxDrawdown,
-      trades: result.trades,
-    };
+    const result = evaluateGenome(ind.genome, trainCloses);
+    return { ...ind, fitness: result.fitness, netEquity: result.netEquity, maxDrawdown: result.maxDrawdown, trades: result.trades };
   });
 
   evaluated.sort((a, b) => b.fitness - a.fitness);
   const best = evaluated[0];
+  const worst = evaluated[evaluated.length - 1];
+  const avgFitness = evaluated.reduce((sum, ind) => sum + ind.fitness, 0) / evaluated.length;
 
-  const bestEval = evaluateGenome(best.genome, closes);
-  const action: "buy" | "sell" | "hold" =
-    bestEval.lastPosition === 1 ? "buy" : bestEval.lastPosition === -1 ? "sell" : "hold";
+  const bestEval = evaluateGenome(best.genome, trainCloses);
+  const action: "buy" | "sell" | "hold" = bestEval.lastPosition === 1 ? "buy" : bestEval.lastPosition === -1 ? "sell" : "hold";
 
-  const next: Individual[] = evaluated.slice(0, ELITE_COUNT).map((ind, i) => ({ ...ind, id: i }));
+  const testResult = evaluateGenome(best.genome, testCloses);
+  const diversity = populationDiversity(evaluated);
+  const mutationRate = diversity < DIVERSITY_FLOOR ? ELEVATED_MUTATION_RATE : MUTATION_RATE;
 
-  let nextId = next.length;
-  while (next.length < POPULATION_SIZE) {
-    const parentA = tournamentPick(evaluated);
-    const parentB = tournamentPick(evaluated);
-    const childGenome = mutate(crossover(parentA.genome, parentB.genome));
-    next.push({
-      id: nextId++,
-      genome: childGenome,
-      fitness: 0,
-      netEquity: 1,
-      maxDrawdown: 0,
-      trades: 0,
-    });
+  const nextGen = generation + 1;
+  let blockedCount = 0; // always 0 until task 2 adds the quarantine check that increments it
+
+  const next: Individual[] = evaluated.slice(0, ELITE_COUNT).map((ind, i) =>
+    freshIndividual(`g${nextGen}-${i}`, ind.genome, nextGen, "elite", [ind.id])
+  );
+
+  for (let i = 0; i < IMMIGRANT_COUNT && next.length < POPULATION_SIZE; i++) {
+    next.push(freshIndividual(`g${nextGen}-${next.length}`, randomGenome(), nextGen, "immigrant", []));
   }
 
-  return { nextPopulation: next, best, signal: { action, price: currentPrice } };
+  while (next.length < POPULATION_SIZE) {
+    const id = `g${nextGen}-${next.length}`;
+    if (Math.random() < 0.3) {
+      const parent = tournamentPick(evaluated);
+      next.push(freshIndividual(id, mutate(parent.genome, mutationRate), nextGen, "mutation", [parent.id]));
+    } else {
+      const parentA = tournamentPick(evaluated);
+      const parentB = tournamentPick(evaluated);
+      next.push(freshIndividual(id, mutate(crossover(parentA.genome, parentB.genome), mutationRate), nextGen, "crossover", [parentA.id, parentB.id]));
+    }
+  }
+
+  const historyEntry: GenerationHistoryEntry = {
+    generation: nextGen,
+    bestFitness: best.fitness,
+    avgFitness,
+    worstFitness: worst.fitness,
+    testEquity: testResult.netEquity,
+    buyAndHoldEquity: buyAndHoldEquity(testCloses),
+    diversity,
+    blockedCount,
+  };
+
+  return { nextPopulation: next, best, signal: { action, price: currentPrice }, historyEntry };
 }
 
 const STORAGE_PREFIX = "egy_ga_snapshot_v1";
@@ -264,7 +396,7 @@ export function loadSnapshot(owner: string = "guest"): GenerationSnapshot | null
   }
 }
 
-export async function fetchHistoricalCloses(limit = 500): Promise<number[]> {
+export async function fetchHistoricalCloses(limit = 1000): Promise<number[]> {
   const res = await fetch(
     `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${limit}`
   );

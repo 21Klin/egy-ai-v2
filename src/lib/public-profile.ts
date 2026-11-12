@@ -80,7 +80,7 @@ export async function syncPublicProfile(uid: string, profile: ProfileForSync): P
   const botWinRate = winRatePct(wallet.botClosedTrades, wallet.botWins);
 
   const gaGenerations = ga._owner === uid ? ga.generation : 0;
-  const bestFitness = ga._owner === uid && ga.bestEverFitness > -Infinity ? ga.bestEverFitness : null;
+  const bestFitness = ga._owner === uid ? ga.bestEverFitness : null;
 
   const stats: PublicProfile["stats"] = {};
   if (profile.show.manualTrades) stats.manualTrades = wallet.manualTrades;

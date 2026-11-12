@@ -88,7 +88,7 @@ export default function DashboardPage() {
   const manualWinRate = winRatePct(wallet.manualClosedTrades, wallet.manualWins);
   const leverageWinRate = winRatePct(wallet.leverageClosedTrades, wallet.leverageWins);
   const botWinRate = winRatePct(wallet.botClosedTrades, wallet.botWins);
-  const bestFitness = bestEverFitness > -Infinity ? bestEverFitness : null;
+  const bestFitness = bestEverFitness;
 
   const stats = [
     { label: "Manual Trades", value: wallet.manualTrades, icon: "🖱️", color: "text-blue-300" },

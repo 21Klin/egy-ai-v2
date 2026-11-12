@@ -21,14 +21,23 @@ import { create } from 'zustand';
 import {
   Individual,
   Genome,
+  GenerationHistoryEntry,
   initialPopulation,
   evolveGeneration,
+  splitTrainTest,
   fetchHistoricalCloses,
   saveSnapshot,
   loadSnapshot,
+  MAX_POSSIBLE_SLOW_MA,
+  TRAIN_RATIO,
 } from './ga-engine';
 
 const GENERATION_INTERVAL_MS = 45 * 1000; // 45s per generation
+const HISTORY_REFRESH_INTERVAL_MS = 2 * 60 * 1000; // re-fetch fresh candles every 2 minutes while running
+const MAX_HISTORY_ENTRIES = 300;
+// Every genome needs MAX_POSSIBLE_SLOW_MA+5 warm-up bars, and that requirement
+// applies independently to both the train slice AND the test slice.
+const MIN_CLOSES_FOR_GENERATION = Math.ceil((MAX_POSSIBLE_SLOW_MA + 5) / (1 - TRAIN_RATIO));
 
 type Signal = { action: 'buy' | 'sell' | 'hold'; price: number; time: number };
 type LogEntry = { time: number; message: string };
@@ -37,15 +46,18 @@ interface GaStoreState {
   running: boolean;
   generation: number;
   population: Individual[];
-  bestEverFitness: number;
+  bestEverFitness: number | null;
   bestEverGenome: Genome;
   lastSignal: Signal | null;
   log: LogEntry[];
+  history: GenerationHistoryEntry[];
+  diversity: number;
   closes: number[];
   loadingHistory: boolean;
   historyError: string | null;
   currentPrice: number;
   _intervalId: ReturnType<typeof setInterval> | null;
+  _historyRefreshIntervalId: ReturnType<typeof setInterval> | null;
   _hasInitialized: boolean;
   _owner: string;
 
@@ -63,15 +75,18 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   running: false,
   generation: 0,
   population: [],
-  bestEverFitness: -Infinity,
+  bestEverFitness: null,
   bestEverGenome: initialPopulation()[0].genome,
   lastSignal: null,
   log: [],
+  history: [],
+  diversity: 0,
   closes: [],
   loadingHistory: false,
   historyError: null,
   currentPrice: 0,
   _intervalId: null,
+  _historyRefreshIntervalId: null,
   _hasInitialized: false,
   _owner: 'guest',
 
@@ -88,6 +103,8 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         bestEverGenome: snap.bestEverGenome,
         lastSignal: snap.lastSignal,
         log: snap.log,
+        history: snap.history ?? [],
+        diversity: snap.history?.[snap.history.length - 1]?.diversity ?? 0,
       });
     } else {
       set({ population: initialPopulation() });
@@ -111,7 +128,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   loadHistory: async () => {
     set({ loadingHistory: true, historyError: null });
     try {
-      const data = await fetchHistoricalCloses(500);
+      const data = await fetchHistoricalCloses(1000);
       set({ closes: data, loadingHistory: false });
     } catch (e: any) {
       set({ historyError: e.message || 'Failed to fetch historical candles from Binance.', loadingHistory: false });
@@ -119,14 +136,14 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   },
 
   runOneGeneration: () => {
-    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log } = get();
-    if (closes.length < 60) return;
+    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log, history } = get();
+    if (closes.length < MIN_CLOSES_FOR_GENERATION) return;
 
+    const { train, test } = splitTrainTest(closes);
     const pop = population.length > 0 ? population : initialPopulation();
-    const { nextPopulation, best, signal } = evolveGeneration(pop, closes, currentPrice);
+    const { nextPopulation, best, signal, historyEntry } = evolveGeneration(pop, train, test, currentPrice, generation);
 
-    const nextGen = generation + 1;
-    const isNewBest = best.fitness > bestEverFitness;
+    const isNewBest = bestEverFitness === null || best.fitness > bestEverFitness;
     const updatedBestFitness = isNewBest ? best.fitness : bestEverFitness;
     const updatedBestGenome = isNewBest ? best.genome : bestEverGenome;
     const signalWithTime: Signal = { ...signal, time: Date.now() };
@@ -134,28 +151,32 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     const logEntry: LogEntry = {
       time: Date.now(),
       message: isNewBest
-        ? `Gen ${nextGen}: new best fitness ${best.fitness.toFixed(4)} (fast ${best.genome.fastMa}/slow ${best.genome.slowMa})`
-        : `Gen ${nextGen}: best fitness ${best.fitness.toFixed(4)}`,
+        ? `Gen ${historyEntry.generation}: new best fitness ${best.fitness.toFixed(4)} (fast ${best.genome.fastMa}/slow ${best.genome.slowMa}) — unseen-data equity ${historyEntry.testEquity.toFixed(4)}`
+        : `Gen ${historyEntry.generation}: best fitness ${best.fitness.toFixed(4)} — unseen-data equity ${historyEntry.testEquity.toFixed(4)}, diversity ${historyEntry.diversity.toFixed(3)}`,
     };
     const nextLog = [logEntry, ...log].slice(0, 30);
+    const nextHistory = [...history, historyEntry].slice(-MAX_HISTORY_ENTRIES);
 
     set({
-      generation: nextGen,
+      generation: historyEntry.generation,
       population: nextPopulation,
       bestEverFitness: updatedBestFitness,
       bestEverGenome: updatedBestGenome,
       lastSignal: signalWithTime,
       log: nextLog,
+      history: nextHistory,
+      diversity: historyEntry.diversity,
     });
 
     saveSnapshot(
       {
-        generation: nextGen,
+        generation: historyEntry.generation,
         population: nextPopulation,
         bestEverFitness: updatedBestFitness,
         bestEverGenome: updatedBestGenome,
         lastSignal: signalWithTime,
         log: nextLog,
+        history: nextHistory,
       },
       get()._owner
     );
@@ -166,19 +187,23 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     set({ running: true });
     get().runOneGeneration();
     const id = setInterval(() => get().runOneGeneration(), GENERATION_INTERVAL_MS);
-    set({ _intervalId: id });
+    const historyId = setInterval(() => get().loadHistory(), HISTORY_REFRESH_INTERVAL_MS);
+    set({ _intervalId: id, _historyRefreshIntervalId: historyId });
   },
 
   stop: () => {
     const id = get()._intervalId;
     if (id) clearInterval(id);
-    set({ running: false, _intervalId: null });
+    const historyId = get()._historyRefreshIntervalId;
+    if (historyId) clearInterval(historyId);
+    set({ running: false, _intervalId: null, _historyRefreshIntervalId: null });
   },
 
   resetForOwner: (owner) => {
     const state = get();
     if (state._owner === owner) return;
     if (state._intervalId) clearInterval(state._intervalId);
+    if (state._historyRefreshIntervalId) clearInterval(state._historyRefreshIntervalId);
 
     const snap = loadSnapshot(owner);
     set({
@@ -186,12 +211,15 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       _hasInitialized: true,
       running: false,
       _intervalId: null,
+      _historyRefreshIntervalId: null,
       generation: snap?.generation ?? 0,
       population: snap?.population ?? initialPopulation(),
-      bestEverFitness: snap?.bestEverFitness ?? -Infinity,
+      bestEverFitness: snap?.bestEverFitness ?? null,
       bestEverGenome: snap?.bestEverGenome ?? initialPopulation()[0].genome,
       lastSignal: snap?.lastSignal ?? null,
       log: snap?.log ?? [],
+      history: snap?.history ?? [],
+      diversity: snap?.history?.[snap.history.length - 1]?.diversity ?? 0,
     });
 
     get().loadHistory();

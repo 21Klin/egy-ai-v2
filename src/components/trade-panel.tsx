@@ -479,7 +479,7 @@ function GeneticAlgorithmTrader() {
         <div className="text-right font-data text-emerald-300">{generation > 0 ? generation : "—"}</div>
         <div className="text-slate-400">Best fitness</div>
         <div className="text-right font-data text-emerald-300">
-          {bestEverFitness > -Infinity ? bestEverFitness.toFixed(4) : "—"}
+          {bestEverFitness !== null ? bestEverFitness.toFixed(4) : "—"}
         </div>
         <div className="text-slate-400">Last signal</div>
         <div className="text-right font-data">{lastSignal?.action.toUpperCase() ?? "—"}</div>

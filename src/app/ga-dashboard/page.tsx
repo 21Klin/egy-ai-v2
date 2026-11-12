@@ -83,7 +83,7 @@ export default function GaDashboardPage() {
             </div>
             <p className="text-sm font-semibold text-emerald-300">Fetching historical candles</p>
             <p className="mt-1 text-xs text-slate-400">
-              Connecting to Binance REST API — loading 500 real 1-minute BTC/USDT candles for the GA to evolve on.
+              Connecting to Binance REST API — loading 1000 real 1-minute BTC/USDT candles for the GA to evolve on.
             </p>
           </section>
         )}
@@ -104,7 +104,7 @@ export default function GaDashboardPage() {
               <StatCard label="Generation" value={generation > 0 ? generation.toString() : "—"} sub="One full evolution cycle every 45s" />
               <StatCard
                 label="Best fitness ever"
-                value={bestEverFitness > -Infinity ? bestEverFitness.toFixed(4) : "—"}
+                value={bestEverFitness !== null ? bestEverFitness.toFixed(4) : "—"}
                 sub="Fee-adjusted, drawdown-penalized"
               />
               <StatCard
@@ -147,8 +147,8 @@ export default function GaDashboardPage() {
                 <div className="space-y-3">
                   {topFive.map((ind) => (
                     <div key={ind.id} className="flex items-center gap-3">
-                      <span className="w-16 font-data text-[10px] text-slate-500">
-                        IND-{String(ind.id).padStart(2, "0")}
+                      <span className="w-20 shrink-0 font-data text-[10px] text-slate-500" title={ind.origin}>
+                        {ind.id}
                       </span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
                         <div
@@ -157,7 +157,7 @@ export default function GaDashboardPage() {
                         />
                       </div>
                       <span className="w-16 text-right font-data text-[10px] text-slate-400">
-                        {ind.fitness > -Infinity ? ind.fitness.toFixed(3) : "—"}
+                        {ind.fitness.toFixed(3)}
                       </span>
                     </div>
                   ))}
