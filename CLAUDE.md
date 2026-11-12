@@ -170,3 +170,4 @@ that shows the bot's training as a live story. Everything is driven by the real 
 
 ## Workflow
 Make focused commits per task. Don't remove existing pages/features. Ask before changing Firebase rules or anything that affects other users' data.
+Publish firestore.rules only after merging to main. The live site on main still reads `users/{uid}` directly for public profiles; this branch's rules lock that path down to owner-only now that `/profile/[uid]` reads from `publicProfiles/{uid}` instead. Deploying early would break public profiles on the live site.

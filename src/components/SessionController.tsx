@@ -6,6 +6,7 @@ import { useWalletStore } from "@/lib/wallet-store";
 import { useGaStore } from "@/lib/ga-store";
 import { useEquityStore } from "@/lib/equity-store";
 import { useProfileStore } from "@/lib/profile-store";
+import { syncPublicProfile } from "@/lib/public-profile";
 
 /**
  * Mount once near the root. Bridges Firebase auth state to every
@@ -25,8 +26,14 @@ export default function SessionController() {
   const resetEquity = useEquityStore((s) => s.reset);
   const loadProfile = useProfileStore((s) => s.load);
   const clearProfile = useProfileStore((s) => s.clear);
+  const profile = useProfileStore((s) => s.profile);
+
+  const walletLoading = useWalletStore((s) => s.loading);
+  const walletUid = useWalletStore((s) => s.uid);
+  const walletIsGuest = useWalletStore((s) => s.isGuest);
 
   const lastOwnerRef = useRef<string | undefined>(undefined);
+  const backfilledForRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (authLoading) return; // don't decide guest vs account until Firebase resolves
@@ -42,8 +49,22 @@ export default function SessionController() {
     } else {
       loadGuest();
       clearProfile();
+      backfilledForRef.current = undefined; // a later login (even the same account) should backfill again
     }
   }, [user, authLoading, loadForUser, loadGuest, resetGaForOwner, resetEquity, loadProfile, clearProfile]);
+
+  // Backfill publicProfiles/{uid} on login — including for accounts that
+  // existed before this doc existed — once per sign-in, and only once the
+  // wallet has actually finished loading. Syncing before that would write
+  // the wallet's optimistic $10,000/zero-trade defaults over a real
+  // history, since the wallet's `uid` is set synchronously before its
+  // Firestore read resolves.
+  useEffect(() => {
+    if (!user || walletLoading || walletIsGuest || walletUid !== user.uid || !profile) return;
+    if (backfilledForRef.current === user.uid) return;
+    backfilledForRef.current = user.uid;
+    syncPublicProfile(user.uid, profile);
+  }, [user, walletLoading, walletUid, walletIsGuest, profile]);
 
   return null;
 }

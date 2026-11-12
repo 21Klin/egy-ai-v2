@@ -23,7 +23,12 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ loading: true, error: null });
       const profile = await getOrCreateProfile(uid, email, displayName);
       set({ profile, loading: false });
-      await syncPublicProfile(uid, profile);
+      // Not synced here: the wallet hasn't necessarily finished loading
+      // yet at this point (its `uid` is set synchronously, before its
+      // own Firestore read resolves), so syncing now could overwrite a
+      // real public history with the wallet's momentary $10,000/zero-
+      // trade defaults. SessionController backfills the public profile
+      // once the wallet has actually finished loading instead.
     } catch (error) {
       set({ loading: false, error: "Failed to load profile" });
     }
