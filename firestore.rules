@@ -2,11 +2,19 @@
 // publishing (Firebase console > Firestore Database > Rules, or
 // `firebase deploy --only firestore:rules`).
 //
-// Model: everything under users/{uid}/** (wallet, trades, gaRuns) is
-// private to that account. Only the authenticated owner may read or
-// write their own tree. publicProfiles/{uid} is a separate, smaller
-// doc that a user explicitly opts fields into (task 0b) and that
-// anyone can read, but still only the owner can write.
+// Model:
+//  - users/{uid}            — the profile doc. Readable by anyone
+//                              (incl. logged-out visitors), because
+//                              the public profile page at /profile/[uid]
+//                              reads any uid with no login required.
+//                              Only the account itself may write it.
+//  - users/{uid}/**          — everything nested (wallet, trades,
+//                              gaRuns, ...) is private: only that
+//                              account may read or write it.
+//  - publicProfiles/{uid}    — not used by the app yet. Reserved for
+//                              task 0b's smaller, opt-in public doc.
+//                              Harmless to include now.
+//  - everything else         — denied by default.
 
 rules_version = '2';
 
@@ -14,7 +22,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
 
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
