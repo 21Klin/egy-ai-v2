@@ -4,14 +4,6 @@ import { create } from 'zustand';
 
 export type Order = [string, string, string?];
 
-export interface Position {
-  entryPrice: number;
-  direction: 'buy' | 'sell';
-  timestamp: number;
-  size?: number;
-  leverage?: number;
-}
-
 export interface Trade {
   price: number;
   quantity: number;
@@ -45,20 +37,12 @@ interface AppState {
   priceChangePercent: number;
   latency: number;
 
-  position: Position | null;
-  pnl: number;
-
   sparklineData: { time: number; value: number }[];
   depthData: { bids: Order[]; asks: Order[] };
   trades: Trade[];
   botHistory: BotHistoryEntry[];
 
-  usdtBalance: number;
-  btcBalance: number;
-
   klineHistory: Kline[];
-  positionSize: number;
-  leverage: number;
 }
 
 interface AppActions {
@@ -74,16 +58,6 @@ interface AppActions {
   addBotHistoryEntry: (entry: { time: number; side: 'BUY' | 'SELL'; price: number; size: number }) => void;
   clearBotHistory: () => void;
 
-  enterPosition: (dir: 'buy' | 'sell') => void;
-  closePosition: () => void;
-  updatePnl: () => void;
-
-  buyBtc: (usdAmount?: number) => void;
-  sellBtc: (btcAmount?: number) => void;
-
-  setLeverage: (leverage: number) => void;
-  setPositionSize: (size: number) => void;
-
   setInitialKlines: (klines: Kline[]) => void;
   addKline: (k: Kline) => void;
 }
@@ -95,25 +69,16 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   priceChangePercent: 0,
   latency: 0,
 
-  position: null,
-  pnl: 0,
-
   sparklineData: [],
   depthData: { bids: [], asks: [] },
   trades: [],
   botHistory: [],
 
-  usdtBalance: 10000,
-  btcBalance: 0,
-
   klineHistory: [],
-  positionSize: 1000,
-  leverage: 1,
 
   setPrice: (price) => {
     const old = get().price;
     set({ price, priceChange: price > old ? 'up' : price < old ? 'down' : 'same' });
-    get().updatePnl();
   },
 
   setVolume24h: (v) => set({ volume24h: v }),
@@ -158,54 +123,4 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     }),
 
   clearBotHistory: () => set({ botHistory: [] }),
-
-  enterPosition: (direction) => {
-    const { price, position, positionSize, leverage, usdtBalance } = get();
-    if (price <= 0 || position) return;
-    const margin = Math.min(Math.max(0, positionSize), usdtBalance);
-    if (margin <= 0) return;
-    set({
-      position: { entryPrice: price, direction, timestamp: Date.now(), size: margin, leverage },
-      pnl: 0,
-    });
-  },
-
-  closePosition: () => {
-    const { pnl, position } = get();
-    if (!position) return;
-    set((state) => ({ position: null, pnl: 0, usdtBalance: state.usdtBalance + pnl }));
-  },
-
-  updatePnl: () => {
-    const { position, price } = get();
-    if (position && position.size && position.entryPrice > 0) {
-      const pnl =
-        (price - position.entryPrice) *
-        (position.direction === 'buy' ? 1 : -1) *
-        (position.size / position.entryPrice) *
-        (position.leverage ?? 1);
-      set({ pnl });
-    }
-  },
-
-  buyBtc: (usdAmount = 100) => {
-    const { price, usdtBalance } = get();
-    if (price > 0 && usdtBalance > 0) {
-      const amt = Math.min(usdAmount, usdtBalance);
-      const btc = amt / price;
-      set((state) => ({ usdtBalance: state.usdtBalance - amt, btcBalance: state.btcBalance + btc }));
-    }
-  },
-
-  sellBtc: (btcAmount) => {
-    const { price, btcBalance } = get();
-    if (price > 0 && btcBalance > 0) {
-      const amt = btcAmount ? Math.min(btcAmount, btcBalance) : btcBalance;
-      const usd = amt * price;
-      set((state) => ({ usdtBalance: state.usdtBalance + usd, btcBalance: state.btcBalance - amt }));
-    }
-  },
-
-  setLeverage: (leverage) => set({ leverage }),
-  setPositionSize: (size) => set((state) => ({ positionSize: Math.min(Math.max(size, 0), state.usdtBalance) })),
 }));

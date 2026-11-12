@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import DataProvider from "@/lib/DataProvider";
 import EquityRecorder from "@/components/equity-recorder";
+import SessionController from "@/components/SessionController";
 import { Toaster } from "@/components/ui/toaster";
 import { KraferSimLogo } from "@/components/icons";
 import { useState } from "react";
@@ -164,6 +165,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js" async></script>
       </head>
       <body className="font-body antialiased min-h-screen bg-slate-950 text-slate-50">
+        <SessionController />
         <Nav />
         <DataProvider>
           <EquityRecorder />

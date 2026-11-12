@@ -1,6 +1,7 @@
 "use client";
 
 import { useStore } from "@/lib/store";
+import { useWalletStore, computePositionPnl } from "@/lib/wallet-store";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -19,15 +20,62 @@ import Link from "next/link";
 
 const DAILY_STOP_LOSS_PCT = 0.08;
 
+// ── RESET WALLET ─────────────────────────────────────────────────────────────
+
+function ResetWalletButton() {
+  const resetWallet = useWalletStore((s) => s.resetWallet);
+  const loading = useWalletStore((s) => s.loading);
+  const [confirming, setConfirming] = useState(false);
+
+  const handleReset = async () => {
+    const err = await resetWallet();
+    setConfirming(false);
+    if (err) {
+      toast({ title: "Reset failed", description: err, variant: "destructive" });
+    } else {
+      toast.success("Paper account reset to $10,000.");
+    }
+  };
+
+  if (confirming) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <span>Reset balance to $10,000? This can&apos;t be undone.</span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="h-7 border-slate-700 px-2 text-[11px]" onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" className="h-7 bg-red-500/20 px-2 text-[11px] text-red-200 hover:bg-red-500/30" onClick={handleReset}>
+            Confirm
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      disabled={loading}
+      onClick={() => setConfirming(true)}
+      className="font-data text-[11px] text-slate-500 underline-offset-2 hover:text-red-300 hover:underline disabled:opacity-40"
+    >
+      Reset paper account to $10,000
+    </button>
+  );
+}
+
 // ── WALLET ───────────────────────────────────────────────────────────────────
 
 function Wallet() {
-  const usdtBalance = useStore((s) => s.usdtBalance);
-  const btcBalance = useStore((s) => s.btcBalance);
+  const usdtBalance = useWalletStore((s) => s.usdtBalance);
+  const btcBalance = useWalletStore((s) => s.btcBalance);
+  const position = useWalletStore((s) => s.position);
+  const loading = useWalletStore((s) => s.loading);
+  const isGuest = useWalletStore((s) => s.isGuest);
+  const error = useWalletStore((s) => s.error);
   const price = useStore((s) => s.price);
-  const position = useStore((s) => s.position);
-  const pnl = useStore((s) => s.pnl);
 
+  const pnl = computePositionPnl(position, price);
   const btcValueInUsdt = btcBalance * price;
   const totalValue = usdtBalance + btcValueInUsdt + (position ? pnl : 0);
   const marginUsed = position ? position.size ?? 0 : 0;
@@ -38,8 +86,33 @@ function Wallet() {
         (position.direction === "buy" ? 1 : -1)
       : 0;
 
+  if (loading) {
+    return (
+      <div className="space-y-3 pt-1">
+        <div className="h-6 w-32 animate-pulse rounded bg-slate-800" />
+        <div className="h-4 w-full animate-pulse rounded bg-slate-800/70" />
+        <div className="h-4 w-full animate-pulse rounded bg-slate-800/70" />
+        <p className="font-data text-[11px] text-slate-500">Loading your paper wallet…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 pt-1">
+      {isGuest && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          Guest mode: your trades won&apos;t be saved.{" "}
+          <Link href="/login" className="underline underline-offset-2 hover:text-amber-100">
+            Log in
+          </Link>{" "}
+          to keep your progress.
+        </div>
+      )}
+      {error && !isGuest && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          Wallet sync issue: {error} Numbers below may be out of date until this clears.
+        </div>
+      )}
       <div className="flex items-baseline justify-between">
         <span className="text-muted-foreground">Total Value</span>
         <span className="font-data text-xl font-bold text-emerald-300">
@@ -72,6 +145,7 @@ function Wallet() {
           </>
         )}
       </div>
+      <ResetWalletButton />
     </div>
   );
 }
@@ -79,19 +153,24 @@ function Wallet() {
 // ── SPOT TRADING ─────────────────────────────────────────────────────────────
 
 function SpotTrading() {
-  const buyBtc = useStore((s) => s.buyBtc);
-  const sellBtc = useStore((s) => s.sellBtc);
-  const btcBalance = useStore((s) => s.btcBalance);
-  const usdtBalance = useStore((s) => s.usdtBalance);
+  const buy = useWalletStore((s) => s.buy);
+  const sell = useWalletStore((s) => s.sell);
+  const btcBalance = useWalletStore((s) => s.btcBalance);
+  const usdtBalance = useWalletStore((s) => s.usdtBalance);
+  const walletLoading = useWalletStore((s) => s.loading);
   const price = useStore((s) => s.price);
   const [amountUsd, setAmountUsd] = useState(100);
   const user = useAuthStore((s) => s.user);
   const tradesRef = useRef<{ side: "buy" | "sell"; price: number }[]>([]);
-  const canBuy = price > 0 && usdtBalance > 0 && amountUsd > 0;
+  const canBuy = !walletLoading && price > 0 && usdtBalance > 0 && amountUsd > 0;
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    buyBtc(amountUsd);
+    const err = await buy(amountUsd, "manual");
+    if (err) {
+      toast({ title: "Trade failed", description: err, variant: "destructive" });
+      return;
+    }
     tradesRef.current.push({ side: "buy", price });
     if (user) {
       const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
@@ -100,10 +179,14 @@ function SpotTrading() {
   };
 
   const handleSell = async () => {
-    if (btcBalance <= 0) return;
+    if (btcBalance <= 0 || walletLoading) return;
     const buyPrice = tradesRef.current.find(t => t.side === "buy")?.price ?? price;
     const pnlEstimate = (price - buyPrice) * btcBalance;
-    sellBtc(btcBalance);
+    const err = await sell(btcBalance, "manual");
+    if (err) {
+      toast({ title: "Trade failed", description: err, variant: "destructive" });
+      return;
+    }
     tradesRef.current.push({ side: "sell", price });
 
     if (user) {
@@ -152,7 +235,7 @@ function SpotTrading() {
         <Button
           className="h-12 bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30"
           onClick={handleSell}
-          disabled={btcBalance <= 0}
+          disabled={btcBalance <= 0 || walletLoading}
         >
           SELL (ALL)
         </Button>
@@ -164,20 +247,29 @@ function SpotTrading() {
 // ── LEVERAGE TRADING ─────────────────────────────────────────────────────────
 
 function LeverageTrading() {
-  const position = useStore((s) => s.position);
-  const pnl = useStore((s) => s.pnl);
-  const enterPosition = useStore((s) => s.enterPosition);
-  const closePosition = useStore((s) => s.closePosition);
-  const leverage = useStore((s) => s.leverage);
-  const setLeverage = useStore((s) => s.setLeverage);
-  const positionSize = useStore((s) => s.positionSize);
-  const setPositionSize = useStore((s) => s.setPositionSize);
+  const position = useWalletStore((s) => s.position);
+  const usdtBalance = useWalletStore((s) => s.usdtBalance);
+  const walletLoading = useWalletStore((s) => s.loading);
+  const openPosition = useWalletStore((s) => s.openPosition);
+  const closePosition = useWalletStore((s) => s.closePosition);
+  const price = useStore((s) => s.price);
+  const pnl = computePositionPnl(position, price);
+
+  const [leverage, setLeverage] = useState(1);
+  const [positionSizeInput, setPositionSizeInput] = useState(1000);
+  const positionSize = Math.min(Math.max(positionSizeInput, 0), usdtBalance);
+
   const user = useAuthStore((s) => s.user);
   const leverageWinsRef = useRef({ wins: 0, total: 0 });
   const leverageOptions = [1, 2, 4, 8];
 
   const handleEnter = async (dir: "buy" | "sell") => {
-    enterPosition(dir);
+    if (walletLoading) return;
+    const err = await openPosition(dir, positionSize, leverage, "leverage");
+    if (err) {
+      toast({ title: "Trade failed", description: err, variant: "destructive" });
+      return;
+    }
     if (user) {
       const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
       await updateProfile(user.uid, { leverageTrades: (p.leverageTrades ?? 0) + 1 });
@@ -185,9 +277,13 @@ function LeverageTrading() {
   };
 
   const handleClose = async () => {
-    if (!position) return;
+    if (!position || walletLoading) return;
     const closedPnl = pnl;
-    closePosition();
+    const err = await closePosition("leverage");
+    if (err) {
+      toast({ title: "Close failed", description: err, variant: "destructive" });
+      return;
+    }
     if (user) {
       const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
       const isWin = closedPnl > 0;
@@ -234,6 +330,7 @@ function LeverageTrading() {
         <Button
           className="w-full h-11 bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30"
           onClick={handleClose}
+          disabled={walletLoading}
         >
           Close Position
         </Button>
@@ -265,15 +362,15 @@ function LeverageTrading() {
           type="number"
           min={10}
           step={10}
-          value={positionSize}
-          onChange={(e) => setPositionSize(Number(e.target.value) || 0)}
+          value={positionSizeInput}
+          onChange={(e) => setPositionSizeInput(Number(e.target.value) || 0)}
         />
       </div>
       <div className="grid grid-cols-2 gap-4 mt-2">
         <Button className="h-12 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
-          onClick={() => handleEnter("buy")}>Long</Button>
+          onClick={() => handleEnter("buy")} disabled={walletLoading}>Long</Button>
         <Button className="h-12 bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30"
-          onClick={() => handleEnter("sell")}>Short</Button>
+          onClick={() => handleEnter("sell")} disabled={walletLoading}>Short</Button>
       </div>
     </div>
   );
@@ -283,10 +380,11 @@ function LeverageTrading() {
 
 function GeneticAlgorithmTrader() {
   const price = useStore((s) => s.price);
-  const buyBtc = useStore((s) => s.buyBtc);
-  const sellBtc = useStore((s) => s.sellBtc);
-  const btcBalance = useStore((s) => s.btcBalance);
-  const usdtBalance = useStore((s) => s.usdtBalance);
+  const buy = useWalletStore((s) => s.buy);
+  const sell = useWalletStore((s) => s.sell);
+  const btcBalance = useWalletStore((s) => s.btcBalance);
+  const usdtBalance = useWalletStore((s) => s.usdtBalance);
+  const walletLoading = useWalletStore((s) => s.loading);
   const addBotHistoryEntry = useStore((s) => s.addBotHistoryEntry);
 
   const init = useGaStore((s) => s.init);
@@ -350,31 +448,33 @@ function GeneticAlgorithmTrader() {
 
   // Execute bot trades + update Firestore directly
   useEffect(() => {
-    if (!lastSignal || lastSignal.time === lastActedSignalTimeRef.current) return;
+    if (!lastSignal || lastSignal.time === lastActedSignalTimeRef.current || walletLoading) return;
     lastActedSignalTimeRef.current = lastSignal.time;
 
-    if (lastSignal.action === "buy") {
-      buyBtc(100);
-      addBotHistoryEntry({ time: Date.now(), side: "BUY", price: lastSignal.price, size: 100 / lastSignal.price });
-      if (user) {
-        getOrCreateProfile(user.uid, user.email || "", user.displayName || "").then((p) => {
-          updateProfile(user.uid, { botTrades: (p.botTrades ?? 0) + 1 });
-        });
-      }
-    } else if (lastSignal.action === "sell" && btcBalance > 0) {
-      const amt = Math.min(100 / lastSignal.price, btcBalance);
-      sellBtc(amt);
-      addBotHistoryEntry({ time: Date.now(), side: "SELL", price: lastSignal.price, size: amt });
-      if (user) {
-        getOrCreateProfile(user.uid, user.email || "", user.displayName || "").then((p) => {
-          updateProfile(user.uid, {
+    (async () => {
+      if (lastSignal.action === "buy") {
+        const err = await buy(100, "bot");
+        if (err) return;
+        addBotHistoryEntry({ time: Date.now(), side: "BUY", price: lastSignal.price, size: 100 / lastSignal.price });
+        if (user) {
+          const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
+          await updateProfile(user.uid, { botTrades: (p.botTrades ?? 0) + 1 });
+        }
+      } else if (lastSignal.action === "sell" && btcBalance > 0) {
+        const amt = Math.min(100 / lastSignal.price, btcBalance);
+        const err = await sell(amt, "bot");
+        if (err) return;
+        addBotHistoryEntry({ time: Date.now(), side: "SELL", price: lastSignal.price, size: amt });
+        if (user) {
+          const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
+          await updateProfile(user.uid, {
             botTrades: (p.botTrades ?? 0) + 1,
             totalPnl: (p.totalPnl ?? 0) + (lastSignal.price * amt - 100),
           });
-        });
+        }
       }
-    }
-  }, [lastSignal, buyBtc, sellBtc, btcBalance, addBotHistoryEntry, user]);
+    })();
+  }, [lastSignal, buy, sell, btcBalance, walletLoading, addBotHistoryEntry, user]);
 
   const handleToggle = (shouldRun: boolean) => {
     if (shouldRun) {
@@ -397,7 +497,7 @@ function GeneticAlgorithmTrader() {
             {running ? "● EVOLVING" : stopLossTriggered ? "● STOP-LOSS TRIGGERED" : "● IDLE"}
           </p>
         </div>
-        <Switch checked={running} onCheckedChange={handleToggle} disabled={loadingHistory} aria-label="Toggle GA Bot" />
+        <Switch checked={running} onCheckedChange={handleToggle} disabled={loadingHistory || walletLoading} aria-label="Toggle GA Bot" />
       </div>
 
       {historyError && <p className="text-xs text-amber-300">{historyError}</p>}

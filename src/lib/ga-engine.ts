@@ -240,19 +240,24 @@ export function evolveGeneration(
   return { nextPopulation: next, best, signal: { action, price: currentPrice } };
 }
 
-const STORAGE_KEY = "egy_ga_snapshot_v1";
+const STORAGE_PREFIX = "egy_ga_snapshot_v1";
 
-export function saveSnapshot(snapshot: GenerationSnapshot) {
+/**
+ * Snapshots are namespaced by account (uid, or "guest") so switching
+ * accounts in the same browser never shows one account's bot state
+ * (population, generation, log) to another.
+ */
+export function saveSnapshot(snapshot: GenerationSnapshot, owner: string = "guest") {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(`${STORAGE_PREFIX}:${owner}`, JSON.stringify(snapshot));
   } catch {
     // ignore storage errors (e.g. private browsing)
   }
 }
 
-export function loadSnapshot(): GenerationSnapshot | null {
+export function loadSnapshot(owner: string = "guest"): GenerationSnapshot | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}:${owner}`);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

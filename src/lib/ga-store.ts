@@ -47,6 +47,7 @@ interface GaStoreState {
   currentPrice: number;
   _intervalId: ReturnType<typeof setInterval> | null;
   _hasInitialized: boolean;
+  _owner: string;
 
   init: () => void;
   setCurrentPrice: (price: number) => void;
@@ -54,6 +55,8 @@ interface GaStoreState {
   runOneGeneration: () => void;
   start: () => void;
   stop: () => void;
+  /** Switches the bot to a different account's isolated state (stops it, clears in-memory population/log, loads that account's own snapshot). "guest" for logged-out visitors. */
+  resetForOwner: (owner: string) => void;
 }
 
 export const useGaStore = create<GaStoreState>((set, get) => ({
@@ -70,12 +73,13 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   currentPrice: 0,
   _intervalId: null,
   _hasInitialized: false,
+  _owner: 'guest',
 
   init: () => {
     if (get()._hasInitialized) return;
     set({ _hasInitialized: true });
 
-    const snap = loadSnapshot();
+    const snap = loadSnapshot(get()._owner);
     if (snap) {
       set({
         generation: snap.generation,
@@ -144,14 +148,17 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       log: nextLog,
     });
 
-    saveSnapshot({
-      generation: nextGen,
-      population: nextPopulation,
-      bestEverFitness: updatedBestFitness,
-      bestEverGenome: updatedBestGenome,
-      lastSignal: signalWithTime,
-      log: nextLog,
-    });
+    saveSnapshot(
+      {
+        generation: nextGen,
+        population: nextPopulation,
+        bestEverFitness: updatedBestFitness,
+        bestEverGenome: updatedBestGenome,
+        lastSignal: signalWithTime,
+        log: nextLog,
+      },
+      get()._owner
+    );
   },
 
   start: () => {
@@ -166,5 +173,27 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     const id = get()._intervalId;
     if (id) clearInterval(id);
     set({ running: false, _intervalId: null });
+  },
+
+  resetForOwner: (owner) => {
+    const state = get();
+    if (state._owner === owner) return;
+    if (state._intervalId) clearInterval(state._intervalId);
+
+    const snap = loadSnapshot(owner);
+    set({
+      _owner: owner,
+      _hasInitialized: true,
+      running: false,
+      _intervalId: null,
+      generation: snap?.generation ?? 0,
+      population: snap?.population ?? initialPopulation(),
+      bestEverFitness: snap?.bestEverFitness ?? -Infinity,
+      bestEverGenome: snap?.bestEverGenome ?? initialPopulation()[0].genome,
+      lastSignal: snap?.lastSignal ?? null,
+      log: snap?.log ?? [],
+    });
+
+    get().loadHistory();
   },
 }));
