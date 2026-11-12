@@ -1,10 +1,14 @@
 "use client";
 import { useAuthStore } from "@/lib/auth-store";
 import { useProfileStore } from "@/lib/profile-store";
+import { useWalletStore, computePositionPnl } from "@/lib/wallet-store";
+import { STARTING_BALANCE, winRatePct } from "@/lib/wallet";
+import { useGaStore } from "@/lib/ga-store";
+import { useStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getOrCreateProfile, type UserProfile } from "@/lib/firestore";
+import type { UserProfile } from "@/lib/firestore";
 
 const visibilityItems: { key: keyof UserProfile["show"]; label: string; icon: string; desc: string }[] = [
   { key: "manualTrades", label: "Manual Trades", icon: "🖱️", desc: "Spot trades you placed manually" },
@@ -13,40 +17,42 @@ const visibilityItems: { key: keyof UserProfile["show"]; label: string; icon: st
   { key: "gaGenerations", label: "GA Generations", icon: "🧬", desc: "How many evolution cycles your bot has run" },
   { key: "winRate", label: "Win Rate", icon: "🎯", desc: "Your overall trading win percentage" },
   { key: "totalPnl", label: "Total P&L", icon: "💰", desc: "Your total simulated profit/loss" },
+  { key: "paperEquity", label: "Paper Balance / Equity", icon: "🏦", desc: "Your current total paper-trading value" },
+  { key: "botWinRate", label: "Bot Win Rate", icon: "🏆", desc: "Win percentage of GA-bot trades only" },
+  { key: "bestFitness", label: "Best Fitness", icon: "⭐", desc: "Your bot's best backtested fitness score" },
 ];
+
+function fmtPct(v: number | null) {
+  return v === null ? "—" : `${v.toFixed(1)}%`;
+}
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
-  const loading = useAuthStore((s) => s.loading);
+  const authLoading = useAuthStore((s) => s.loading);
+
+  const profile = useProfileStore((s) => s.profile);
+  const profileLoading = useProfileStore((s) => s.loading);
   const toggleVisibility = useProfileStore((s) => s.toggleVisibility);
   const updateDisplayName = useProfileStore((s) => s.updateDisplayName);
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const wallet = useWalletStore();
+  const price = useStore((s) => s.price);
+  const generation = useGaStore((s) => s.generation);
+  const bestEverFitness = useGaStore((s) => s.bestEverFitness);
+
   const [nameEdit, setNameEdit] = useState("");
   const [nameSaved, setNameSaved] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      setProfileLoading(false);
-      return;
-    }
-    getOrCreateProfile(user.uid, user.email || "", user.displayName || "")
-      .then((p) => {
-        setProfile(p);
-        setProfileLoading(false);
-        setNameEdit(p.displayName);
-      })
-      .catch(() => setProfileLoading(false));
-  }, [user, loading]);
+    if (profile) setNameEdit(profile.displayName);
+  }, [profile]);
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    if (!authLoading && !user) router.push("/login");
+  }, [user, authLoading, router]);
 
-  if (loading || profileLoading) {
+  if (authLoading || profileLoading || !profile) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-slate-950">
         <span className="font-data text-sm text-slate-400">Loading your dashboard…</span>
@@ -54,7 +60,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] flex-col items-center justify-center gap-4 bg-slate-950 text-slate-50">
         <div className="text-4xl">🔒</div>
@@ -66,28 +72,34 @@ export default function DashboardPage() {
     );
   }
 
-  const handleToggle = async (key: keyof UserProfile["show"]) => {
-    const newShow = { ...profile.show, [key]: !profile.show[key] };
-    setProfile({ ...profile, show: newShow });
-    await toggleVisibility(user.uid, key);
-  };
+  const handleToggle = (key: keyof UserProfile["show"]) => toggleVisibility(user.uid, key);
 
   const saveName = async () => {
     if (nameEdit.trim() && nameEdit !== profile.displayName) {
       await updateDisplayName(user.uid, nameEdit.trim());
-      setProfile({ ...profile, displayName: nameEdit.trim() });
       setNameSaved(true);
       setTimeout(() => setNameSaved(false), 2000);
     }
   };
 
+  const equity = wallet.usdtBalance + wallet.btcBalance * price + (wallet.position ? computePositionPnl(wallet.position, price) : 0);
+  const totalPnl = equity - STARTING_BALANCE;
+  const overallWinRate = winRatePct(wallet.closedTrades, wallet.wins);
+  const manualWinRate = winRatePct(wallet.manualClosedTrades, wallet.manualWins);
+  const leverageWinRate = winRatePct(wallet.leverageClosedTrades, wallet.leverageWins);
+  const botWinRate = winRatePct(wallet.botClosedTrades, wallet.botWins);
+  const bestFitness = bestEverFitness > -Infinity ? bestEverFitness : null;
+
   const stats = [
-    { label: "Manual Trades", value: profile.manualTrades, icon: "🖱️", color: "text-blue-300" },
-    { label: "Leverage Trades", value: profile.leverageTrades, icon: "⚡", color: "text-purple-300" },
-    { label: "Bot Trades", value: profile.botTrades, icon: "🤖", color: "text-emerald-300" },
-    { label: "GA Generations", value: profile.gaGenerations, icon: "🧬", color: "text-cyan-300" },
-    { label: "Win Rate", value: `${profile.winRate.toFixed(1)}%`, icon: "🎯", color: profile.winRate >= 52 ? "text-emerald-300" : "text-red-300" },
-    { label: "Total P&L", value: `${profile.totalPnl >= 0 ? "+" : ""}${profile.totalPnl.toFixed(2)} USDT`, icon: "💰", color: profile.totalPnl >= 0 ? "text-emerald-300" : "text-red-300" },
+    { label: "Manual Trades", value: wallet.manualTrades, icon: "🖱️", color: "text-blue-300" },
+    { label: "Leverage Trades", value: wallet.leverageTrades, icon: "⚡", color: "text-purple-300" },
+    { label: "Bot Trades", value: wallet.botTrades, icon: "🤖", color: "text-emerald-300" },
+    { label: "GA Generations", value: generation, icon: "🧬", color: "text-cyan-300" },
+    { label: "Win Rate", value: fmtPct(overallWinRate), icon: "🎯", color: overallWinRate === null ? "text-slate-400" : overallWinRate >= 52 ? "text-emerald-300" : "text-red-300" },
+    { label: "Total P&L", value: `${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)} USDT`, icon: "💰", color: totalPnl >= 0 ? "text-emerald-300" : "text-red-300" },
+    { label: "Paper Balance / Equity", value: `$${equity.toFixed(2)}`, icon: "🏦", color: "text-emerald-300" },
+    { label: "Bot Win Rate", value: fmtPct(botWinRate), icon: "🏆", color: botWinRate === null ? "text-slate-400" : botWinRate >= 52 ? "text-emerald-300" : "text-red-300" },
+    { label: "Best Fitness", value: bestFitness !== null ? bestFitness.toFixed(4) : "—", icon: "⭐", color: "text-cyan-300" },
   ];
 
   return (
@@ -107,7 +119,10 @@ export default function DashboardPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Your Stats</h2>
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">Your Stats</h2>
+          <p className="mb-3 text-[11px] text-slate-500">
+            Every number here comes live from your real paper wallet and bot — nothing is estimated or carried over from before the paper-wallet system.
+          </p>
           <div className="grid gap-3 sm:grid-cols-3">
             {stats.map((s) => (
               <div key={s.label} className="led-edge hud-corners rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
@@ -117,6 +132,20 @@ export default function DashboardPage() {
                 <div className={`mt-2 font-data text-2xl font-bold ${s.color}`}>{s.value}</div>
               </div>
             ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-center text-xs">
+            <div>
+              <div className="text-slate-400">Manual win rate</div>
+              <div className="mt-1 font-data text-sm font-semibold text-blue-300">{fmtPct(manualWinRate)}</div>
+            </div>
+            <div>
+              <div className="text-slate-400">Leverage win rate</div>
+              <div className="mt-1 font-data text-sm font-semibold text-purple-300">{fmtPct(leverageWinRate)}</div>
+            </div>
+            <div>
+              <div className="text-slate-400">Bot win rate</div>
+              <div className="mt-1 font-data text-sm font-semibold text-emerald-300">{fmtPct(botWinRate)}</div>
+            </div>
           </div>
         </section>
 

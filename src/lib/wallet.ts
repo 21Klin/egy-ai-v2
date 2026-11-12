@@ -7,10 +7,16 @@
  * balances + append an audit row to users/{uid}/trades), so two tabs
  * or devices can never race each other into a wrong balance.
  *
+ * The wallet doc is also the single source of truth for every
+ * trade-derived stat (counts, win rates) — each counter is bumped in
+ * the SAME transaction as the trade that caused it, so there's no
+ * separate read-then-write race like the old per-trade profile
+ * updates had (two trade types could stomp on each other's win rate).
+ *
  * The "apply*" functions below are pure (no Firestore) so the exact
- * same math can run for a logged-in account (wrapped in a transaction)
- * and for a logged-out guest (applied directly to in-memory state in
- * wallet-store.ts) without duplicating the trading rules.
+ * same math and the exact same counters run for a logged-in account
+ * (wrapped in a transaction) and for a logged-out guest (applied
+ * directly to in-memory state in wallet-store.ts).
  */
 
 import {
@@ -36,10 +42,30 @@ export interface WalletPosition {
 export interface Wallet {
   usdtBalance: number;
   btcBalance: number;
+  /** Total USDT cost basis of the current btcBalance (fees included). avg cost = btcCostBasis / btcBalance. */
+  btcCostBasis: number;
   position: WalletPosition | null;
+  /** Running total of realized P&L across every sell and every closed leveraged position, fee-adjusted. */
   realizedPnl: number;
   createdAt: number;
   updatedAt: number;
+
+  // Trade-count counters — one "trade" per buy, per sell, per leveraged open.
+  // (Closing a leveraged position isn't counted again here; see closedTrades.)
+  manualTrades: number;
+  leverageTrades: number;
+  botTrades: number;
+
+  // Realization counters — one per event that actually locks in a P&L
+  // (every sell, every leveraged close). Used for win rate.
+  closedTrades: number;
+  wins: number;
+  manualClosedTrades: number;
+  manualWins: number;
+  leverageClosedTrades: number;
+  leverageWins: number;
+  botClosedTrades: number;
+  botWins: number;
 }
 
 export type TradeSource = "manual" | "leverage" | "bot" | "system";
@@ -61,17 +87,53 @@ export interface StoredTradeRecord extends TradeRecord {
 
 export function defaultWallet(): Wallet {
   const now = Date.now();
-  return { usdtBalance: STARTING_BALANCE, btcBalance: 0, position: null, realizedPnl: 0, createdAt: now, updatedAt: now };
+  return {
+    usdtBalance: STARTING_BALANCE,
+    btcBalance: 0,
+    btcCostBasis: 0,
+    position: null,
+    realizedPnl: 0,
+    createdAt: now,
+    updatedAt: now,
+    manualTrades: 0,
+    leverageTrades: 0,
+    botTrades: 0,
+    closedTrades: 0,
+    wins: 0,
+    manualClosedTrades: 0,
+    manualWins: 0,
+    leverageClosedTrades: 0,
+    leverageWins: 0,
+    botClosedTrades: 0,
+    botWins: 0,
+  };
+}
+
+function num(v: any, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 
 export function normalizeWallet(data: any): Wallet {
+  const fresh = defaultWallet();
   return {
-    usdtBalance: typeof data?.usdtBalance === "number" ? data.usdtBalance : STARTING_BALANCE,
-    btcBalance: typeof data?.btcBalance === "number" ? data.btcBalance : 0,
+    usdtBalance: num(data?.usdtBalance, fresh.usdtBalance),
+    btcBalance: num(data?.btcBalance, fresh.btcBalance),
+    btcCostBasis: num(data?.btcCostBasis, fresh.btcCostBasis),
     position: data?.position ?? null,
-    realizedPnl: typeof data?.realizedPnl === "number" ? data.realizedPnl : 0,
-    createdAt: typeof data?.createdAt === "number" ? data.createdAt : Date.now(),
-    updatedAt: typeof data?.updatedAt === "number" ? data.updatedAt : Date.now(),
+    realizedPnl: num(data?.realizedPnl, fresh.realizedPnl),
+    createdAt: num(data?.createdAt, fresh.createdAt),
+    updatedAt: num(data?.updatedAt, fresh.updatedAt),
+    manualTrades: num(data?.manualTrades, 0),
+    leverageTrades: num(data?.leverageTrades, 0),
+    botTrades: num(data?.botTrades, 0),
+    closedTrades: num(data?.closedTrades, 0),
+    wins: num(data?.wins, 0),
+    manualClosedTrades: num(data?.manualClosedTrades, 0),
+    manualWins: num(data?.manualWins, 0),
+    leverageClosedTrades: num(data?.leverageClosedTrades, 0),
+    leverageWins: num(data?.leverageWins, 0),
+    botClosedTrades: num(data?.botClosedTrades, 0),
+    botWins: num(data?.botWins, 0),
   };
 }
 
@@ -85,27 +147,80 @@ export function computePositionPnl(position: WalletPosition | null, price: numbe
   );
 }
 
+/** wins/closed as a percentage, or null when there's nothing closed yet (honest empty state, not a fake 0%). */
+export function winRatePct(closed: number, wins: number): number | null {
+  return closed > 0 ? (wins / closed) * 100 : null;
+}
+
+function bumpTradeCount(wallet: Wallet, source: TradeSource): Pick<Wallet, "manualTrades" | "leverageTrades" | "botTrades"> {
+  return {
+    manualTrades: wallet.manualTrades + (source === "manual" ? 1 : 0),
+    leverageTrades: wallet.leverageTrades + (source === "leverage" ? 1 : 0),
+    botTrades: wallet.botTrades + (source === "bot" ? 1 : 0),
+  };
+}
+
+function bumpClosedTrade(
+  wallet: Wallet,
+  source: TradeSource,
+  pnl: number
+): Pick<Wallet, "closedTrades" | "wins" | "manualClosedTrades" | "manualWins" | "leverageClosedTrades" | "leverageWins" | "botClosedTrades" | "botWins"> {
+  const isWin = pnl > 0 ? 1 : 0;
+  return {
+    closedTrades: wallet.closedTrades + 1,
+    wins: wallet.wins + isWin,
+    manualClosedTrades: wallet.manualClosedTrades + (source === "manual" ? 1 : 0),
+    manualWins: wallet.manualWins + (source === "manual" ? isWin : 0),
+    leverageClosedTrades: wallet.leverageClosedTrades + (source === "leverage" ? 1 : 0),
+    leverageWins: wallet.leverageWins + (source === "leverage" ? isWin : 0),
+    botClosedTrades: wallet.botClosedTrades + (source === "bot" ? 1 : 0),
+    botWins: wallet.botWins + (source === "bot" ? isWin : 0),
+  };
+}
+
 // ── Pure trade math (shared by guest mode and Firestore transactions) ──────
 
-export function applyBuy(wallet: Wallet, usdAmount: number, price: number): { next: Wallet; trade: TradeRecord } {
+export function applyBuy(wallet: Wallet, usdAmount: number, price: number, source: TradeSource): { next: Wallet; trade: TradeRecord } {
   if (price <= 0) throw new Error("No live price yet — try again in a moment.");
   if (usdAmount <= 0) throw new Error("Enter an amount greater than zero.");
   if (wallet.usdtBalance <= 0) throw new Error("Insufficient USDT balance.");
   const amt = Math.min(usdAmount, wallet.usdtBalance);
   const fee = amt * FEE_RATE;
   const btc = (amt - fee) / price;
-  const next: Wallet = { ...wallet, usdtBalance: wallet.usdtBalance - amt, btcBalance: wallet.btcBalance + btc, updatedAt: Date.now() };
+  const next: Wallet = {
+    ...wallet,
+    usdtBalance: wallet.usdtBalance - amt,
+    btcBalance: wallet.btcBalance + btc,
+    // the full amount spent (fee included) becomes sunk cost basis for this BTC
+    btcCostBasis: wallet.btcCostBasis + amt,
+    updatedAt: Date.now(),
+    ...bumpTradeCount(wallet, source),
+  };
   return { next, trade: { time: Date.now(), side: "buy", price, amount: btc, fee, balanceAfter: next.usdtBalance } };
 }
 
-export function applySell(wallet: Wallet, btcAmount: number, price: number): { next: Wallet; trade: TradeRecord } {
+export function applySell(wallet: Wallet, btcAmount: number, price: number, source: TradeSource): { next: Wallet; trade: TradeRecord } {
   if (price <= 0) throw new Error("No live price yet — try again in a moment.");
   if (wallet.btcBalance <= 0) throw new Error("No BTC to sell.");
   const amt = btcAmount > 0 ? Math.min(btcAmount, wallet.btcBalance) : wallet.btcBalance;
+  const avgCost = wallet.btcBalance > 0 ? wallet.btcCostBasis / wallet.btcBalance : 0;
   const gross = amt * price;
   const fee = gross * FEE_RATE;
-  const next: Wallet = { ...wallet, btcBalance: wallet.btcBalance - amt, usdtBalance: wallet.usdtBalance + gross - fee, updatedAt: Date.now() };
-  return { next, trade: { time: Date.now(), side: "sell", price, amount: amt, fee, balanceAfter: next.usdtBalance } };
+  const proceeds = gross - fee;
+  const costBasisSold = avgCost * amt;
+  const pnl = proceeds - costBasisSold;
+  const remainingBtc = wallet.btcBalance - amt;
+  const next: Wallet = {
+    ...wallet,
+    btcBalance: remainingBtc,
+    btcCostBasis: remainingBtc > 0 ? avgCost * remainingBtc : 0,
+    usdtBalance: wallet.usdtBalance + proceeds,
+    realizedPnl: wallet.realizedPnl + pnl,
+    updatedAt: Date.now(),
+    ...bumpTradeCount(wallet, source),
+    ...bumpClosedTrade(wallet, source, pnl),
+  };
+  return { next, trade: { time: Date.now(), side: "sell", price, amount: amt, fee, balanceAfter: next.usdtBalance, pnl } };
 }
 
 export function applyOpenPosition(
@@ -113,25 +228,33 @@ export function applyOpenPosition(
   direction: "buy" | "sell",
   size: number,
   leverage: number,
-  price: number
+  price: number,
+  source: TradeSource
 ): { next: Wallet; trade: TradeRecord } {
   if (price <= 0) throw new Error("No live price yet — try again in a moment.");
   if (wallet.position) throw new Error("A position is already open.");
   const margin = Math.min(Math.max(size, 0), wallet.usdtBalance);
   if (margin <= 0) throw new Error("Insufficient balance for this position size.");
   const position: WalletPosition = { direction, entryPrice: price, size: margin, leverage: Math.max(1, leverage), timestamp: Date.now() };
-  const next: Wallet = { ...wallet, position, updatedAt: Date.now() };
+  const next: Wallet = { ...wallet, position, updatedAt: Date.now(), ...bumpTradeCount(wallet, source) };
   return {
     next,
     trade: { time: Date.now(), side: direction === "buy" ? "open_long" : "open_short", price, amount: margin, fee: 0, balanceAfter: next.usdtBalance },
   };
 }
 
-export function applyClosePosition(wallet: Wallet, price: number): { next: Wallet; trade: TradeRecord } {
+export function applyClosePosition(wallet: Wallet, price: number, source: TradeSource): { next: Wallet; trade: TradeRecord } {
   if (!wallet.position) throw new Error("No open position.");
   if (price <= 0) throw new Error("No live price yet — try again in a moment.");
   const pnl = computePositionPnl(wallet.position, price);
-  const next: Wallet = { ...wallet, usdtBalance: wallet.usdtBalance + pnl, position: null, realizedPnl: wallet.realizedPnl + pnl, updatedAt: Date.now() };
+  const next: Wallet = {
+    ...wallet,
+    usdtBalance: wallet.usdtBalance + pnl,
+    position: null,
+    realizedPnl: wallet.realizedPnl + pnl,
+    updatedAt: Date.now(),
+    ...bumpClosedTrade(wallet, source, pnl),
+  };
   return { next, trade: { time: Date.now(), side: "close", price, amount: wallet.position.size, fee: 0, balanceAfter: next.usdtBalance, pnl } };
 }
 
@@ -193,19 +316,19 @@ async function runWalletTx(
 }
 
 export function buyBtcTx(uid: string, usdAmount: number, price: number, source: TradeSource) {
-  return runWalletTx(uid, (w) => applyBuy(w, usdAmount, price), source);
+  return runWalletTx(uid, (w) => applyBuy(w, usdAmount, price, source), source);
 }
 
 export function sellBtcTx(uid: string, btcAmount: number, price: number, source: TradeSource) {
-  return runWalletTx(uid, (w) => applySell(w, btcAmount, price), source);
+  return runWalletTx(uid, (w) => applySell(w, btcAmount, price, source), source);
 }
 
 export function openPositionTx(uid: string, direction: "buy" | "sell", size: number, leverage: number, price: number, source: TradeSource) {
-  return runWalletTx(uid, (w) => applyOpenPosition(w, direction, size, leverage, price), source);
+  return runWalletTx(uid, (w) => applyOpenPosition(w, direction, size, leverage, price, source), source);
 }
 
 export function closePositionTx(uid: string, price: number, source: TradeSource) {
-  return runWalletTx(uid, (w) => applyClosePosition(w, price), source);
+  return runWalletTx(uid, (w) => applyClosePosition(w, price, source), source);
 }
 
 export function resetWalletTx(uid: string, source: TradeSource = "system") {

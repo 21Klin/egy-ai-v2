@@ -15,10 +15,20 @@ import { toast } from "@/lib/use-toast";
 import { Input } from "./ui/input";
 import { useGaStore } from "@/lib/ga-store";
 import { useAuthStore } from "@/lib/auth-store";
-import { getOrCreateProfile, updateProfile } from "@/lib/firestore";
+import { useProfileStore } from "@/lib/profile-store";
+import { syncPublicProfile } from "@/lib/public-profile";
 import Link from "next/link";
 
 const DAILY_STOP_LOSS_PCT = 0.08;
+
+/** After a trade completes, mirror the toggled-on stats out to the public profile (no-op for guests / logged-out). */
+function useSyncPublicProfileAfterTrade() {
+  const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
+  return () => {
+    if (user && profile) syncPublicProfile(user.uid, profile);
+  };
+}
 
 // ── RESET WALLET ─────────────────────────────────────────────────────────────
 
@@ -160,8 +170,7 @@ function SpotTrading() {
   const walletLoading = useWalletStore((s) => s.loading);
   const price = useStore((s) => s.price);
   const [amountUsd, setAmountUsd] = useState(100);
-  const user = useAuthStore((s) => s.user);
-  const tradesRef = useRef<{ side: "buy" | "sell"; price: number }[]>([]);
+  const syncProfile = useSyncPublicProfileAfterTrade();
   const canBuy = !walletLoading && price > 0 && usdtBalance > 0 && amountUsd > 0;
 
   const handleBuy = async () => {
@@ -171,36 +180,17 @@ function SpotTrading() {
       toast({ title: "Trade failed", description: err, variant: "destructive" });
       return;
     }
-    tradesRef.current.push({ side: "buy", price });
-    if (user) {
-      const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-      await updateProfile(user.uid, { manualTrades: (p.manualTrades ?? 0) + 1 });
-    }
+    syncProfile();
   };
 
   const handleSell = async () => {
     if (btcBalance <= 0 || walletLoading) return;
-    const buyPrice = tradesRef.current.find(t => t.side === "buy")?.price ?? price;
-    const pnlEstimate = (price - buyPrice) * btcBalance;
     const err = await sell(btcBalance, "manual");
     if (err) {
       toast({ title: "Trade failed", description: err, variant: "destructive" });
       return;
     }
-    tradesRef.current.push({ side: "sell", price });
-
-    if (user) {
-      const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-      const sells = tradesRef.current.filter(t => t.side === "sell");
-      const buys = tradesRef.current.filter(t => t.side === "buy");
-      const wins = sells.filter((s, i) => buys[i] && s.price > buys[i].price).length;
-      const winRate = sells.length > 0 ? (wins / sells.length) * 100 : 0;
-      await updateProfile(user.uid, {
-        manualTrades: (p.manualTrades ?? 0) + 1,
-        winRate,
-        totalPnl: (p.totalPnl ?? 0) + pnlEstimate,
-      });
-    }
+    syncProfile();
   };
 
   return (
@@ -259,8 +249,7 @@ function LeverageTrading() {
   const [positionSizeInput, setPositionSizeInput] = useState(1000);
   const positionSize = Math.min(Math.max(positionSizeInput, 0), usdtBalance);
 
-  const user = useAuthStore((s) => s.user);
-  const leverageWinsRef = useRef({ wins: 0, total: 0 });
+  const syncProfile = useSyncPublicProfileAfterTrade();
   const leverageOptions = [1, 2, 4, 8];
 
   const handleEnter = async (dir: "buy" | "sell") => {
@@ -270,31 +259,17 @@ function LeverageTrading() {
       toast({ title: "Trade failed", description: err, variant: "destructive" });
       return;
     }
-    if (user) {
-      const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-      await updateProfile(user.uid, { leverageTrades: (p.leverageTrades ?? 0) + 1 });
-    }
+    syncProfile();
   };
 
   const handleClose = async () => {
     if (!position || walletLoading) return;
-    const closedPnl = pnl;
     const err = await closePosition("leverage");
     if (err) {
       toast({ title: "Close failed", description: err, variant: "destructive" });
       return;
     }
-    if (user) {
-      const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-      const isWin = closedPnl > 0;
-      leverageWinsRef.current.total += 1;
-      if (isWin) leverageWinsRef.current.wins += 1;
-      const winRate = (leverageWinsRef.current.wins / leverageWinsRef.current.total) * 100;
-      await updateProfile(user.uid, {
-        winRate,
-        totalPnl: (p.totalPnl ?? 0) + closedPnl,
-      });
-    }
+    syncProfile();
   };
 
   if (position) {
@@ -398,7 +373,7 @@ function GeneticAlgorithmTrader() {
   const loadingHistory = useGaStore((s) => s.loadingHistory);
   const historyError = useGaStore((s) => s.historyError);
 
-  const user = useAuthStore((s) => s.user);
+  const syncProfile = useSyncPublicProfileAfterTrade();
   const sessionStartBalanceRef = useRef<number | null>(null);
   const [stopLossTriggered, setStopLossTriggered] = useState(false);
   const lastActedSignalTimeRef = useRef(0);
@@ -407,17 +382,15 @@ function GeneticAlgorithmTrader() {
   useEffect(() => { init(); }, [init]);
   useEffect(() => { if (price > 0) setCurrentPrice(price); }, [price, setCurrentPrice]);
 
-  // Track gaGenerations directly in Firestore
+  // Mirror generation/best-fitness progress to the public profile whenever it changes.
+  // gaGenerations itself isn't persisted anywhere else — this component's own
+  // dashboard reads it live from the GA store; only the public profile needs a copy.
   useEffect(() => {
     if (generation > 0 && generation !== lastGenerationRef.current) {
       lastGenerationRef.current = generation;
-      if (user) {
-        getOrCreateProfile(user.uid, user.email || "", user.displayName || "").then((p) => {
-          updateProfile(user.uid, { gaGenerations: (p.gaGenerations ?? 0) + 1 });
-        });
-      }
+      syncProfile();
     }
-  }, [generation, user]);
+  }, [generation, syncProfile]);
 
   // Stop-loss
   useEffect(() => {
@@ -446,7 +419,9 @@ function GeneticAlgorithmTrader() {
     }
   }, [usdtBalance, btcBalance, price, running, stop]);
 
-  // Execute bot trades + update Firestore directly
+  // Execute bot trades — balances + win/loss stats are all handled inside the
+  // wallet transaction itself (see wallet.ts); this just logs the cosmetic
+  // bot-history feed and mirrors the result to the public profile.
   useEffect(() => {
     if (!lastSignal || lastSignal.time === lastActedSignalTimeRef.current || walletLoading) return;
     lastActedSignalTimeRef.current = lastSignal.time;
@@ -456,25 +431,16 @@ function GeneticAlgorithmTrader() {
         const err = await buy(100, "bot");
         if (err) return;
         addBotHistoryEntry({ time: Date.now(), side: "BUY", price: lastSignal.price, size: 100 / lastSignal.price });
-        if (user) {
-          const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-          await updateProfile(user.uid, { botTrades: (p.botTrades ?? 0) + 1 });
-        }
+        syncProfile();
       } else if (lastSignal.action === "sell" && btcBalance > 0) {
         const amt = Math.min(100 / lastSignal.price, btcBalance);
         const err = await sell(amt, "bot");
         if (err) return;
         addBotHistoryEntry({ time: Date.now(), side: "SELL", price: lastSignal.price, size: amt });
-        if (user) {
-          const p = await getOrCreateProfile(user.uid, user.email || "", user.displayName || "");
-          await updateProfile(user.uid, {
-            botTrades: (p.botTrades ?? 0) + 1,
-            totalPnl: (p.totalPnl ?? 0) + (lastSignal.price * amt - 100),
-          });
-        }
+        syncProfile();
       }
     })();
-  }, [lastSignal, buy, sell, btcBalance, walletLoading, addBotHistoryEntry, user]);
+  }, [lastSignal, buy, sell, btcBalance, walletLoading, addBotHistoryEntry, syncProfile]);
 
   const handleToggle = (shouldRun: boolean) => {
     if (shouldRun) {

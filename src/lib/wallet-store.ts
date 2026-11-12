@@ -112,7 +112,7 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
     const price = livePrice();
     try {
       if (!uid || isGuest) {
-        const { next } = applyBuy(get(), usdAmount, price);
+        const { next } = applyBuy(get(), usdAmount, price, source);
         set({ ...next, error: null });
       } else {
         const next = await buyBtcTx(uid, usdAmount, price, source);
@@ -131,7 +131,7 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
     const price = livePrice();
     try {
       if (!uid || isGuest) {
-        const { next } = applySell(get(), btcAmount, price);
+        const { next } = applySell(get(), btcAmount, price, source);
         set({ ...next, error: null });
       } else {
         const next = await sellBtcTx(uid, btcAmount, price, source);
@@ -150,7 +150,7 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
     const price = livePrice();
     try {
       if (!uid || isGuest) {
-        const { next } = applyOpenPosition(get(), direction, size, leverage, price);
+        const { next } = applyOpenPosition(get(), direction, size, leverage, price, source);
         set({ ...next, error: null });
       } else {
         const next = await openPositionTx(uid, direction, size, leverage, price, source);
@@ -169,7 +169,7 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
     const price = livePrice();
     try {
       if (!uid || isGuest) {
-        const { next } = applyClosePosition(get(), price);
+        const { next } = applyClosePosition(get(), price, source);
         set({ ...next, error: null });
       } else {
         const next = await closePositionTx(uid, price, source);

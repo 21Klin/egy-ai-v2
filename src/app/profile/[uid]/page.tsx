@@ -3,15 +3,39 @@
 export const runtime = 'edge';
 
 import { useEffect, useState } from "react";
-import { getPublicProfile, type UserProfile } from "@/lib/firestore";
+import { readPublicProfile, type PublicProfile } from "@/lib/public-profile";
 import Link from "next/link";
 
+const STAT_META: Record<
+  keyof NonNullable<PublicProfile["stats"]>,
+  { label: string; icon: string; color: string; fmt: (v: number) => string }
+> = {
+  manualTrades: { label: "Manual Trades", icon: "🖱️", color: "text-blue-300", fmt: (v) => `${v}` },
+  leverageTrades: { label: "Leverage Trades", icon: "⚡", color: "text-purple-300", fmt: (v) => `${v}` },
+  botTrades: { label: "Bot Trades", icon: "🤖", color: "text-emerald-300", fmt: (v) => `${v}` },
+  gaGenerations: { label: "GA Generations", icon: "🧬", color: "text-cyan-300", fmt: (v) => `${v}` },
+  winRate: { label: "Win Rate", icon: "🎯", color: "text-emerald-300", fmt: (v) => `${v.toFixed(1)}%` },
+  totalPnl: { label: "Total P&L", icon: "💰", color: "text-emerald-300", fmt: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)} USDT` },
+  paperEquity: { label: "Paper Balance / Equity", icon: "🏦", color: "text-emerald-300", fmt: (v) => `$${v.toFixed(2)}` },
+  botWinRate: { label: "Bot Win Rate", icon: "🏆", color: "text-emerald-300", fmt: (v) => `${v.toFixed(1)}%` },
+  bestFitness: { label: "Best Fitness", icon: "⭐", color: "text-cyan-300", fmt: (v) => v.toFixed(4) },
+};
+
+function advancementLevel(generations: number, bestFitness: number | null) {
+  const profit = bestFitness !== null ? bestFitness - 1 : null; // backtested return as a fraction, e.g. 0.05 = +5%
+  if (generations >= 100 && profit !== null && profit >= 0.1) return { label: "Elite Trader", color: "text-yellow-300 border-yellow-500/30 bg-yellow-500/10" };
+  if (generations >= 50 && profit !== null && profit >= 0.05) return { label: "Advanced", color: "text-purple-300 border-purple-500/30 bg-purple-500/10" };
+  if (generations >= 20 && profit !== null && profit > 0) return { label: "Intermediate", color: "text-blue-300 border-blue-500/30 bg-blue-500/10" };
+  if (generations >= 5) return { label: "Developing", color: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" };
+  return { label: "Beginner", color: "text-slate-300 border-slate-500/30 bg-slate-500/10" };
+}
+
 export default function PublicProfilePage({ params }: { params: { uid: string } }) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPublicProfile(params.uid)
+    readPublicProfile(params.uid)
       .then((p) => {
         setProfile(p);
         setLoading(false);
@@ -40,22 +64,18 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
     );
   }
 
-  const visibleStats = [
-    { key: "manualTrades" as const, label: "Manual Trades", icon: "🖱️", value: profile.manualTrades, color: "text-blue-300" },
-    { key: "leverageTrades" as const, label: "Leverage Trades", icon: "⚡", value: profile.leverageTrades, color: "text-purple-300" },
-    { key: "botTrades" as const, label: "Bot Trades", icon: "🤖", value: profile.botTrades, color: "text-emerald-300" },
-    { key: "gaGenerations" as const, label: "GA Generations", icon: "🧬", value: profile.gaGenerations, color: "text-cyan-300" },
-    { key: "winRate" as const, label: "Win Rate", icon: "🎯", value: profile.winRate, color: profile.winRate >= 52 ? "text-emerald-300" : "text-red-300", fmt: (v: number) => `${v.toFixed(1)}%` },
-    { key: "totalPnl" as const, label: "Total P&L", icon: "💰", value: profile.totalPnl, color: profile.totalPnl >= 0 ? "text-emerald-300" : "text-red-300", fmt: (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)} USDT` },
-  ].filter((s) => profile.show[s.key]);
+  const visibleStats = (Object.keys(profile.stats) as (keyof NonNullable<PublicProfile["stats"]>)[])
+    .map((key) => {
+      const meta = STAT_META[key];
+      const value = profile.stats[key];
+      if (value === undefined) return null;
+      return { key, ...meta, value: meta.fmt(value) };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
 
   const initial = profile.displayName?.charAt(0)?.toUpperCase() || "?";
-
-  const gaLevel = profile.gaGenerations >= 100 ? { label: "Elite Trader", color: "text-yellow-300 border-yellow-500/30 bg-yellow-500/10" }
-    : profile.gaGenerations >= 50 ? { label: "Advanced", color: "text-purple-300 border-purple-500/30 bg-purple-500/10" }
-    : profile.gaGenerations >= 20 ? { label: "Intermediate", color: "text-blue-300 border-blue-500/30 bg-blue-500/10" }
-    : profile.gaGenerations >= 5 ? { label: "Developing", color: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" }
-    : { label: "Beginner", color: "text-slate-300 border-slate-500/30 bg-slate-500/10" };
+  const level = advancementLevel(profile.gaGenerations, profile.bestFitness);
+  const profitPct = profile.bestFitness !== null ? (profile.bestFitness - 1) * 100 : null;
 
   return (
     <div className="circuit-grid min-h-[calc(100vh-5rem)] bg-slate-950 px-4 py-10 text-slate-50">
@@ -75,8 +95,8 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
             </p>
           </div>
 
-          <div className={`rounded-full border px-4 py-1.5 font-data text-xs font-semibold ${gaLevel.color}`}>
-            {gaLevel.label} · {profile.gaGenerations} GA Generations
+          <div className={`rounded-full border px-4 py-1.5 font-data text-xs font-semibold ${level.color}`}>
+            {level.label} · {profile.gaGenerations} GA Generations
           </div>
         </section>
 
@@ -89,9 +109,7 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
               {visibleStats.map((s) => (
                 <div key={s.key} className="led-edge hud-corners rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-center">
                   <div className="text-2xl mb-1">{s.icon}</div>
-                  <div className={`font-data text-2xl font-bold ${s.color}`}>
-                    {s.fmt ? s.fmt(s.value) : s.value}
-                  </div>
+                  <div className={`font-data text-2xl font-bold ${s.color}`}>{s.value}</div>
                   <div className="mt-1 text-[11px] text-slate-400">{s.label}</div>
                 </div>
               ))}
@@ -128,6 +146,13 @@ export default function PublicProfilePage({ params }: { params: { uid: string } 
               </div>
             ))}
           </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            Levels require BOTH generations run and a profitable best backtest (Developing: 5+ gens;
+            Intermediate: 20+ gens and a profitable strategy; Advanced: 50+ gens and +5% backtested
+            return; Elite: 100+ gens and +10%).
+            {profitPct !== null ? ` Current best backtest: ${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(2)}%.` : " No strategy has been backtested yet."}
+            {" "}Out-of-sample (unseen-data) validation isn't in the engine yet — these numbers reflect backtest performance only.
+          </p>
         </section>
 
         <div className="text-center">
