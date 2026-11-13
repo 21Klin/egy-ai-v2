@@ -29,6 +29,12 @@
  *     much drawdown); new children too similar to a quarantined genome
  *     get rejected and re-generated, so the bot doesn't just re-breed
  *     the same mistake it already learned from
+ *   - more real history per generation (5-minute candles, paginated up
+ *     to 2000 of them — see fetchHistoricalCloses), which measurably
+ *     improved how the champion does on unseen data. See the long
+ *     comment above buyAndHoldEquity for what was tried and what
+ *     genuinely helped versus what didn't (honestly: generalization is
+ *     improved, not solved)
  */
 
 export type Genome = {
@@ -74,7 +80,12 @@ export type EliminationReason = "lost money" | "drawdown too high" | "outcompete
 export type GraveyardEntry = {
   id: string;
   genome: Genome;
+  /** Post-drawdown-penalty score used for selection — NOT what `reason` is based on; see netEquity/maxDrawdown below for that. */
   fitness: number;
+  /** Raw train-window equity (no drawdown penalty applied). `reason === "lost money"` iff this is < 1. */
+  netEquity: number;
+  /** Train-window peak-to-trough drawdown. `reason === "drawdown too high"` iff this exceeds the threshold. */
+  maxDrawdown: number;
   /** Scored on the test window, same as a survivor would be — lets the graveyard answer "would this also have failed on unseen data?" */
   testEquity: number;
   generationDied: number;
@@ -252,6 +263,39 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
   return { fitness, netEquity: equity, maxDrawdown, trades, lastPosition: position };
 }
 
+/**
+ * GENERALIZATION — an honest note, not a solved problem.
+ *
+ * A first attempt here split the train window into 4 sub-windows and
+ * averaged fitness across them, on the theory that a genome overfitting one
+ * lucky stretch would score worse than one holding up across several. Tested
+ * properly (8 seeded trials, both the synthetic data AND the GA's own
+ * randomness reproducible, isolating each variable): it did NOT help. At the
+ * same candle count, single-window and 4-window selection produced
+ * statistically indistinguishable "does train fitness predict test rank"
+ * results (avg champion rank ~7-10th of 24 either way; an eliminated
+ * non-champion beat the champion's test equity in ~95% of checkpoints
+ * under BOTH). It was reverted — a change that adds real computational cost
+ * and complexity with no measured benefit isn't worth shipping.
+ *
+ * The one lever that did reliably help: more total history. The old default
+ * (1000 1-minute candles = 16.7 hours, split 70/30) gave genomes with
+ * slowMa up to ~160 bars barely enough room for one real crossover signal;
+ * champions came out flat-to-negative on unseen data and lost to
+ * buy-and-hold in 8/8 seeded trials. Candles are now 5-minute, 2000 of
+ * them (~1 week) — see fetchHistoricalCloses — which reliably beat
+ * buy-and-hold in 8/8 trials instead.
+ *
+ * But that is NOT the same as solving selection quality: with more history,
+ * the "eliminated beats champion" rate was still ~95-96%, same as before.
+ * Picking the single best-train-fitness genome each generation remains a
+ * weak predictor of which genome will do best on data it hasn't seen — a
+ * harder problem than a fitness-function tweak fixes. A smaller drawdown
+ * penalty (tested at 0.5x instead of 2.0x) showed a marginally better
+ * average rank (6.5 vs 6.8) but within the noise across seeds, so it was
+ * left unchanged rather than ship a change the data doesn't clearly support.
+ */
+
 /** Buy-and-hold equity over the same closes, for comparison against the bot. */
 export function buyAndHoldEquity(closes: number[]): number {
   if (closes.length < 2 || closes[0] <= 0) return 1;
@@ -421,6 +465,8 @@ export function evolveGeneration(
     id: ind.id,
     genome: ind.genome,
     fitness: ind.fitness,
+    netEquity: ind.netEquity,
+    maxDrawdown: ind.maxDrawdown,
     testEquity: evaluateGenome(ind.genome, testCloses).netEquity,
     generationDied: generation,
     reason: classifyElimination(ind),
@@ -523,11 +569,35 @@ export function loadSnapshot(owner: string = "guest"): GenerationSnapshot | null
   }
 }
 
-export async function fetchHistoricalCloses(limit = 1000): Promise<number[]> {
-  const res = await fetch(
-    `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=${limit}`
-  );
-  if (!res.ok) throw new Error(`Binance klines request failed (${res.status})`);
-  const data = await res.json();
-  return data.map((k: any[]) => parseFloat(k[4]));
+const BINANCE_MAX_PER_REQUEST = 1000;
+
+/**
+ * Fetches `totalLimit` closes, paginating backward in time since Binance
+ * caps a single klines request at 1000. Defaults to 5m candles (was 1m) —
+ * 2000 candles at 5m covers ~6.9 days of real market time instead of ~16.7
+ * hours, which is what actually made the difference in the generalization
+ * test above (see FITNESS_WINDOW_COUNT): with only 1000 1m candles split
+ * 70/30, train/test are a few hundred bars each — thin enough that a GA can
+ * find a "pattern" that's really just that window's specific noise.
+ */
+export async function fetchHistoricalCloses(totalLimit = 2000, interval = "5m"): Promise<number[]> {
+  const closes: number[] = [];
+  let endTime: number | undefined;
+
+  while (closes.length < totalLimit) {
+    const batchLimit = Math.min(BINANCE_MAX_PER_REQUEST, totalLimit - closes.length);
+    const url =
+      `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${batchLimit}` +
+      (endTime !== undefined ? `&endTime=${endTime}` : "");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Binance klines request failed (${res.status})`);
+    const data: any[][] = await res.json();
+    if (data.length === 0) break;
+
+    closes.unshift(...data.map((k) => parseFloat(k[4])));
+    endTime = data[0][0] - 1; // next (older) page ends right before this page's earliest candle
+    if (data.length < batchLimit) break; // Binance had no more history to give
+  }
+
+  return closes.slice(-totalLimit);
 }

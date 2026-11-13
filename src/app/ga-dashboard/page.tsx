@@ -83,7 +83,7 @@ export default function GaDashboardPage() {
             </div>
             <p className="text-sm font-semibold text-emerald-300">Fetching historical candles</p>
             <p className="mt-1 text-xs text-slate-400">
-              Connecting to Binance REST API — loading 1000 real 1-minute BTC/USDT candles for the GA to evolve on.
+              Connecting to Binance REST API — loading 2000 real 5-minute BTC/USDT candles (~1 week of history) for the GA to evolve on.
             </p>
           </section>
         )}

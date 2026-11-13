@@ -151,7 +151,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   loadHistory: async () => {
     set({ loadingHistory: true, historyError: null });
     try {
-      const data = await fetchHistoricalCloses(1000);
+      const data = await fetchHistoricalCloses();
       set({ closes: data, loadingHistory: false });
     } catch (e: any) {
       set({ historyError: e.message || 'Failed to fetch historical candles from Binance.', loadingHistory: false });

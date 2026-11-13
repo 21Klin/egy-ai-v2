@@ -32,12 +32,13 @@ export default function LearnHowEgyAiWorksPage() {
           <WSRow stream="btcusdt@trade" desc="Every individual trade — price + quantity + timestamp. Updates multiple times per second." color="emerald" />
           <WSRow stream="btcusdt@depth20@100ms" desc="Top 20 bids and asks, refreshed every 100ms. Powers the live order book." color="blue" />
           <WSRow stream="btcusdt@ticker" desc="24-hour statistics — volume, % change, high, low. Updates continuously." color="purple" />
-          <WSRow stream="btcusdt@kline_1m" desc="1-minute candles as they form. The GA engine uses these for strategy evaluation." color="orange" />
+          <WSRow stream="btcusdt@kline_1m" desc="1-minute candles as they form. Powers the live price chart." color="orange" />
         </div>
         <p className="mt-3">
-          Additionally, on startup, 500 completed 1-minute candles are fetched
-          from Binance&apos;s REST API to give the GA historical data to train on
-          immediately.
+          Separately, on startup (and again every couple of minutes while the
+          bot runs), 2000 completed 5-minute candles — about a week of real
+          market history — are fetched from Binance&apos;s REST API to give
+          the GA historical data to train and evolve on.
         </p>
       </Section>
 
