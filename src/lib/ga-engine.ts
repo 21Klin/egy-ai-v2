@@ -104,12 +104,18 @@ export type GenerationSnapshot = {
   population: Individual[];
   bestEverFitness: number | null;
   bestEverGenome: Genome;
-  lastSignal: { action: "buy" | "sell" | "hold"; price: number; time: number };
+  /** Captured once, at generation 1, and never overwritten — the "Gen 1 vs now" card's other half. */
+  firstChampionGenome: Genome | null;
+  lastSignal: { action: "buy" | "sell" | "hold"; price: number; time: number } | null;
   log: { time: number; message: string }[];
   history: GenerationHistoryEntry[];
   graveyard: GraveyardEntry[];
   quarantine: GraveyardEntry[];
   repeatsBlockedTotal: number;
+  /** Uncapped running totals for the end-of-run report card — graveyard/quarantine above are capped for display/lookup, these never shrink. */
+  strategiesCreatedTotal: number;
+  eliminatedTotal: number;
+  quarantinedTotal: number;
   /** Last ~16 generations' full evaluated populations, for the lineage tree. */
   recentGenerations: { generation: number; population: Individual[] }[];
 };

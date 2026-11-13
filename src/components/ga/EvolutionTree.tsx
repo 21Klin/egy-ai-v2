@@ -102,7 +102,7 @@ export default function EvolutionTree({
               const style = nodeStyle(ind, graveyardIds, col.isLatest);
               return (
                 <circle
-                  key={ind.id}
+                  key={`${ci}-${ind.id}`}
                   cx={pos.x}
                   cy={pos.y}
                   r={NODE_RADIUS}
@@ -121,7 +121,7 @@ export default function EvolutionTree({
           )}
           {columns.map((col, ci) => (
             <text
-              key={`label-${col.generation}`}
+              key={`label-${ci}-${col.generation}`}
               x={PADDING + ci * COLUMN_WIDTH + COLUMN_WIDTH / 2}
               y={height - 4}
               textAnchor="middle"

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { useGaStore } from "@/lib/ga-store";
 import { evaluateGenome, splitTrainTest, type Individual, type GraveyardEntry } from "@/lib/ga-engine";
+import { Switch } from "@/components/ui/switch";
 import LearningCurveChart from "@/components/ga/LearningCurveChart";
 import GenomeEvolutionChart from "@/components/ga/GenomeEvolutionChart";
 import DiversityMeter from "@/components/ga/DiversityMeter";
@@ -34,8 +36,12 @@ export default function GaDashboardPage() {
   const quarantine = useGaStore((s) => s.quarantine);
   const repeatsBlockedTotal = useGaStore((s) => s.repeatsBlockedTotal);
   const recentGenerations = useGaStore((s) => s.recentGenerations);
+  const demoMode = useGaStore((s) => s.demoMode);
+  const setDemoMode = useGaStore((s) => s.setDemoMode);
+  const resetRun = useGaStore((s) => s.resetRun);
 
   const [selected, setSelected] = useState<Individual | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   useEffect(() => { init(); }, [init]);
   useEffect(() => { if (price > 0) setCurrentPrice(price); }, [price, setCurrentPrice]);
@@ -79,10 +85,20 @@ export default function GaDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Link
+              href="/ga-demo"
+              className="rounded-full border border-purple-500/40 bg-purple-500/10 px-4 py-1.5 font-data text-xs font-semibold text-purple-300 transition hover:bg-purple-500/20"
+            >
+              Judge Demo →
+            </Link>
             <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 font-data text-xs">
               <span className={`circuit-node ${running ? "" : "idle"}`} />
               {loadingHistory ? "Loading data…" : running ? "Evolving" : "Idle"}
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs">
+              <Switch checked={demoMode} onCheckedChange={setDemoMode} aria-label="Toggle demo speed" />
+              <span className="text-slate-300">{demoMode ? "Demo speed (4s)" : "Normal speed (45s)"}</span>
             </div>
             <button
               onClick={start}
@@ -98,6 +114,27 @@ export default function GaDashboardPage() {
             >
               Stop
             </button>
+            {confirmingReset ? (
+              <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">
+                <span>Reset to gen 0? Old runs stay saved.</span>
+                <button onClick={() => setConfirmingReset(false)} className="rounded-full px-2 py-0.5 text-slate-300 hover:bg-slate-800">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { resetRun(); setConfirmingReset(false); }}
+                  className="rounded-full bg-red-500/20 px-2 py-0.5 font-semibold text-red-200 hover:bg-red-500/30"
+                >
+                  Confirm
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingReset(true)}
+                className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-slate-400 transition hover:bg-slate-800"
+              >
+                Reset run
+              </button>
+            )}
           </div>
         </section>
 

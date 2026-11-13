@@ -9,7 +9,8 @@
  *                                        — one append-only doc per
  *                                          generation (never rewritten):
  *                                          the audit trail a learning-
- *                                          curve chart reads from.
+ *                                          curve chart (and the /ga-demo
+ *                                          replay feature) reads from.
  *
  * This is a mirror, not the source of truth for a single session — the
  * in-memory store + its localStorage snapshot stay authoritative while
@@ -39,11 +40,15 @@ export interface GaRunLiveState {
   population: Individual[];
   bestEverFitness: number | null;
   bestEverGenome: Genome;
+  firstChampionGenome: Genome | null;
   lastSignal: Signal | null;
   log: LogEntry[];
   graveyard: GraveyardEntry[];
   quarantine: GraveyardEntry[];
   repeatsBlockedTotal: number;
+  strategiesCreatedTotal: number;
+  eliminatedTotal: number;
+  quarantinedTotal: number;
 }
 
 export interface GenerationDoc {
@@ -59,6 +64,14 @@ export interface GenerationDoc {
   diversity: number;
   eliminated: GraveyardEntry[];
   blockedCount: number;
+}
+
+export interface RunSummary {
+  runId: string;
+  startedAt: number;
+  updatedAt: number;
+  status: string;
+  generation: number;
 }
 
 function runsCol(uid: string) {
@@ -91,11 +104,15 @@ export async function createRun(uid: string): Promise<string> {
     population: [],
     bestEverFitness: null,
     bestEverGenome: null,
+    firstChampionGenome: null,
     lastSignal: null,
     log: [],
     graveyard: [],
     quarantine: [],
     repeatsBlockedTotal: 0,
+    strategiesCreatedTotal: POPULATION_SIZE,
+    eliminatedTotal: 0,
+    quarantinedTotal: 0,
   });
   return ref.id;
 }
@@ -137,11 +154,15 @@ export async function getLatestRun(
     population: data.population ?? [],
     bestEverFitness: data.bestEverFitness ?? null,
     bestEverGenome: data.bestEverGenome,
+    firstChampionGenome: data.firstChampionGenome ?? null,
     lastSignal: data.lastSignal ?? null,
     log: data.log ?? [],
     graveyard: data.graveyard ?? [],
     quarantine: data.quarantine ?? [],
     repeatsBlockedTotal: data.repeatsBlockedTotal ?? 0,
+    strategiesCreatedTotal: data.strategiesCreatedTotal ?? POPULATION_SIZE,
+    eliminatedTotal: data.eliminatedTotal ?? 0,
+    quarantinedTotal: data.quarantinedTotal ?? 0,
   };
 
   const genQuery = query(generationsCol(uid, runId), orderBy("generation", "desc"), limit(50));
@@ -164,4 +185,27 @@ export async function getLatestRun(
   const recentGenerations = genDocs.slice(-16).map((g) => ({ generation: g.generation, population: g.population }));
 
   return { runId, state, recentHistory, recentGenerations };
+}
+
+/** Every run this account has ever started, newest first — for the /ga-demo replay picker. */
+export async function listRuns(uid: string): Promise<RunSummary[]> {
+  const q = query(runsCol(uid), orderBy("startedAt", "desc"), limit(20));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      runId: d.id,
+      startedAt: data.startedAt ?? 0,
+      updatedAt: data.updatedAt ?? 0,
+      status: data.status ?? "active",
+      generation: data.generation ?? 0,
+    };
+  });
+}
+
+/** Every generation doc for one run, oldest first — the full timeline /ga-demo replays. */
+export async function getRunGenerations(uid: string, runId: string): Promise<GenerationDoc[]> {
+  const q = query(generationsCol(uid, runId), orderBy("generation", "asc"), limit(1000));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as GenerationDoc);
 }
