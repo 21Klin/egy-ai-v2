@@ -99,9 +99,9 @@ export type GenerationSnapshot = {
   repeatsBlockedTotal: number;
 };
 
-const POPULATION_SIZE = 24;
-const ELITE_COUNT = 4;
-const IMMIGRANT_COUNT = 3;
+export const POPULATION_SIZE = 24;
+export const ELITE_COUNT = 4;
+export const IMMIGRANT_COUNT = 3;
 const TOURNAMENT_SIZE = 5;
 const MUTATION_RATE = 0.25;
 const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has collapsed
@@ -393,6 +393,8 @@ export function evolveGeneration(
   graveyard: GraveyardEntry[];
   quarantine: GraveyardEntry[];
   blockedEvents: BlockedEvent[];
+  /** Just this generation's fresh eliminations (a subset of the returned `graveyard`), for a per-generation audit record. */
+  eliminatedThisGeneration: GraveyardEntry[];
 } {
   const evaluated: Individual[] = population.map((ind) => {
     const result = evaluateGenome(ind.genome, trainCloses);
@@ -493,6 +495,7 @@ export function evolveGeneration(
     graveyard: nextGraveyard,
     quarantine: nextQuarantine,
     blockedEvents,
+    eliminatedThisGeneration: newGraveyardEntries,
   };
 }
 
