@@ -15,6 +15,7 @@ const navItems = [
   { href: "/", label: "Home" },
   { href: "/trading", label: "Trading" },
   { href: "/ga-dashboard", label: "GA Dashboard" },
+  { href: "/ga-demo", label: "Judge Demo" },
   { href: "/history", label: "Bot History" },
   { href: "/about", label: "About" },
   { href: "/guide", label: "Guide" },
