@@ -22,6 +22,7 @@ import {
   Individual,
   Genome,
   GenerationHistoryEntry,
+  GraveyardEntry,
   initialPopulation,
   evolveGeneration,
   splitTrainTest,
@@ -52,6 +53,9 @@ interface GaStoreState {
   log: LogEntry[];
   history: GenerationHistoryEntry[];
   diversity: number;
+  graveyard: GraveyardEntry[];
+  quarantine: GraveyardEntry[];
+  repeatsBlockedTotal: number;
   closes: number[];
   loadingHistory: boolean;
   historyError: string | null;
@@ -81,6 +85,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   log: [],
   history: [],
   diversity: 0,
+  graveyard: [],
+  quarantine: [],
+  repeatsBlockedTotal: 0,
   closes: [],
   loadingHistory: false,
   historyError: null,
@@ -105,6 +112,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         log: snap.log,
         history: snap.history ?? [],
         diversity: snap.history?.[snap.history.length - 1]?.diversity ?? 0,
+        graveyard: snap.graveyard ?? [],
+        quarantine: snap.quarantine ?? [],
+        repeatsBlockedTotal: snap.repeatsBlockedTotal ?? 0,
       });
     } else {
       set({ population: initialPopulation() });
@@ -136,26 +146,39 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   },
 
   runOneGeneration: () => {
-    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log, history } = get();
+    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log, history, graveyard, quarantine, repeatsBlockedTotal } = get();
     if (closes.length < MIN_CLOSES_FOR_GENERATION) return;
 
     const { train, test } = splitTrainTest(closes);
     const pop = population.length > 0 ? population : initialPopulation();
-    const { nextPopulation, best, signal, historyEntry } = evolveGeneration(pop, train, test, currentPrice, generation);
+    const { nextPopulation, best, signal, historyEntry, graveyard: nextGraveyard, quarantine: nextQuarantine, blockedEvents } = evolveGeneration(
+      pop,
+      train,
+      test,
+      currentPrice,
+      generation,
+      graveyard,
+      quarantine
+    );
 
     const isNewBest = bestEverFitness === null || best.fitness > bestEverFitness;
     const updatedBestFitness = isNewBest ? best.fitness : bestEverFitness;
     const updatedBestGenome = isNewBest ? best.genome : bestEverGenome;
     const signalWithTime: Signal = { ...signal, time: Date.now() };
 
-    const logEntry: LogEntry = {
+    const generationLogEntry: LogEntry = {
       time: Date.now(),
       message: isNewBest
         ? `Gen ${historyEntry.generation}: new best fitness ${best.fitness.toFixed(4)} (fast ${best.genome.fastMa}/slow ${best.genome.slowMa}) — unseen-data equity ${historyEntry.testEquity.toFixed(4)}`
         : `Gen ${historyEntry.generation}: best fitness ${best.fitness.toFixed(4)} — unseen-data equity ${historyEntry.testEquity.toFixed(4)}, diversity ${historyEntry.diversity.toFixed(3)}`,
     };
-    const nextLog = [logEntry, ...log].slice(0, 30);
+    const blockLogEntries: LogEntry[] = blockedEvents.map((b) => ({
+      time: Date.now(),
+      message: `Gen ${b.generation}: blocked child (too similar to failed ${b.tooSimilarToId})`,
+    }));
+    const nextLog = [generationLogEntry, ...blockLogEntries, ...log].slice(0, 30);
     const nextHistory = [...history, historyEntry].slice(-MAX_HISTORY_ENTRIES);
+    const nextRepeatsBlockedTotal = repeatsBlockedTotal + blockedEvents.length;
 
     set({
       generation: historyEntry.generation,
@@ -166,6 +189,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       log: nextLog,
       history: nextHistory,
       diversity: historyEntry.diversity,
+      graveyard: nextGraveyard,
+      quarantine: nextQuarantine,
+      repeatsBlockedTotal: nextRepeatsBlockedTotal,
     });
 
     saveSnapshot(
@@ -177,6 +203,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         lastSignal: signalWithTime,
         log: nextLog,
         history: nextHistory,
+        graveyard: nextGraveyard,
+        quarantine: nextQuarantine,
+        repeatsBlockedTotal: nextRepeatsBlockedTotal,
       },
       get()._owner
     );
@@ -220,6 +249,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       log: snap?.log ?? [],
       history: snap?.history ?? [],
       diversity: snap?.history?.[snap.history.length - 1]?.diversity ?? 0,
+      graveyard: snap?.graveyard ?? [],
+      quarantine: snap?.quarantine ?? [],
+      repeatsBlockedTotal: snap?.repeatsBlockedTotal ?? 0,
     });
 
     get().loadHistory();

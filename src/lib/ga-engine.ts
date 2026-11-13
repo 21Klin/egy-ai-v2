@@ -24,6 +24,11 @@
  *     memorizing the data it was scored on"
  *   - population diversity tracking + a few random immigrants each
  *     generation, to fight premature convergence
+ *   - a graveyard (every eliminated individual, with a reason) and a
+ *     quarantine list (the ones that clearly failed — net loss or too
+ *     much drawdown); new children too similar to a quarantined genome
+ *     get rejected and re-generated, so the bot doesn't just re-breed
+ *     the same mistake it already learned from
  */
 
 export type Genome = {
@@ -64,6 +69,23 @@ export type GenerationHistoryEntry = {
   blockedCount: number;
 };
 
+export type EliminationReason = "lost money" | "drawdown too high" | "outcompeted";
+
+export type GraveyardEntry = {
+  id: string;
+  genome: Genome;
+  fitness: number;
+  /** Scored on the test window, same as a survivor would be — lets the graveyard answer "would this also have failed on unseen data?" */
+  testEquity: number;
+  generationDied: number;
+  reason: EliminationReason;
+};
+
+export type BlockedEvent = {
+  generation: number;
+  tooSimilarToId: string;
+};
+
 export type GenerationSnapshot = {
   generation: number;
   population: Individual[];
@@ -72,6 +94,9 @@ export type GenerationSnapshot = {
   lastSignal: { action: "buy" | "sell" | "hold"; price: number; time: number };
   log: { time: number; message: string }[];
   history: GenerationHistoryEntry[];
+  graveyard: GraveyardEntry[];
+  quarantine: GraveyardEntry[];
+  repeatsBlockedTotal: number;
 };
 
 const POPULATION_SIZE = 24;
@@ -83,6 +108,27 @@ const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has 
 const DIVERSITY_FLOOR = 0.08; // below this, raise mutation to fight premature convergence
 const TRANSACTION_COST = 0.0010; // 0.10%, matches Binance taker fee
 export const TRAIN_RATIO = 0.7;
+
+const DRAWDOWN_FAIL_THRESHOLD = 0.3; // >30% peak-to-trough on the train backtest counts as a clear failure
+const MAX_GRAVEYARD_SIZE = 200;
+const MAX_QUARANTINE_SIZE = 150;
+const MAX_CHILD_RETRIES = 5;
+/**
+ * How close (normalized genome distance) a new child can be to a quarantined
+ * failure before it gets rejected and re-generated.
+ *
+ * Tuned empirically against an 80-generation offline run (fixed synthetic
+ * data, see the task 2 commit). Independently random genome pairs have a
+ * median normalized distance of ~0.21 (even the 5th percentile is ~0.11),
+ * so anything near that scale blocks almost everything once quarantine has
+ * ~100+ entries — an earlier pass at 0.12 blocked 100% of generations,
+ * ~100 children per generation (nearly every attempt, every retry). At
+ * 0.011, ~65% of generations see at least one block, averaging ~1.3
+ * blocks/generation with real quiet stretches in between — close enough to
+ * the near-duplicate scale (a small hand-mutated copy of a genome measures
+ * ~0.025 away) that it's catching real repeats, not blocking by coincidence.
+ */
+export const QUARANTINE_SIMILARITY_THRESHOLD = 0.011;
 
 /** Every genome is backtested starting from this same bar index, regardless of its own slowMa,
  *  so two genomes' fitness scores are comparable (neither gets a head start or a shorter window). */
@@ -289,6 +335,27 @@ export function populationDiversity(population: Individual[]): number {
   return count > 0 ? total / count : 0;
 }
 
+/** Why an individual didn't make it to the next generation. */
+function classifyElimination(ind: Individual): EliminationReason {
+  if (ind.maxDrawdown > DRAWDOWN_FAIL_THRESHOLD) return "drawdown too high";
+  if (ind.netEquity < 1) return "lost money";
+  return "outcompeted";
+}
+
+/** The closest quarantined genome to a candidate, if any exist. */
+function nearestQuarantineMatch(genome: Genome, quarantine: GraveyardEntry[]): { entry: GraveyardEntry; distance: number } | null {
+  let nearest: GraveyardEntry | null = null;
+  let nearestDist = Infinity;
+  for (const q of quarantine) {
+    const d = normalizedDistance(genome, q.genome);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = q;
+    }
+  }
+  return nearest ? { entry: nearest, distance: nearestDist } : null;
+}
+
 function freshIndividual(id: string, genome: Genome, bornGeneration: number, origin: Origin, parentIds: string[]): Individual {
   return { id, genome, fitness: 0, netEquity: 1, maxDrawdown: 0, trades: 0, parentIds, bornGeneration, origin };
 }
@@ -299,24 +366,33 @@ export function initialPopulation(): Individual[] {
 
 /**
  * Runs ONE full generation: evaluate every individual against the TRAIN
- * window, then produce the next generation via elitism + a few random
- * immigrants (to fight premature convergence) + tournament selection +
- * crossover/mutation. Separately scores the generation's best genome
- * against the TEST window (never used for selection) and against
- * buy-and-hold, so a learning curve can show whether the bot is actually
- * getting better at unseen data, not just memorizing the train window.
+ * window, archive everyone who doesn't survive into the graveyard (and,
+ * if they clearly failed, the quarantine list too), then produce the next
+ * generation via elitism + a few random immigrants + tournament selection +
+ * crossover/mutation — rejecting and re-generating any child that's too
+ * similar to a quarantined failure, so the bot doesn't just re-breed the
+ * same mistake it already learned from. Separately scores the generation's
+ * best genome against the TEST window (never used for selection) and
+ * against buy-and-hold, so a learning curve can show whether the bot is
+ * actually getting better at unseen data, not just memorizing the train
+ * window.
  */
 export function evolveGeneration(
   population: Individual[],
   trainCloses: number[],
   testCloses: number[],
   currentPrice: number,
-  generation: number
+  generation: number,
+  graveyard: GraveyardEntry[],
+  quarantine: GraveyardEntry[]
 ): {
   nextPopulation: Individual[];
   best: Individual;
   signal: { action: "buy" | "sell" | "hold"; price: number };
   historyEntry: GenerationHistoryEntry;
+  graveyard: GraveyardEntry[];
+  quarantine: GraveyardEntry[];
+  blockedEvents: BlockedEvent[];
 } {
   const evaluated: Individual[] = population.map((ind) => {
     const result = evaluateGenome(ind.genome, trainCloses);
@@ -336,8 +412,22 @@ export function evolveGeneration(
   const mutationRate = diversity < DIVERSITY_FLOOR ? ELEVATED_MUTATION_RATE : MUTATION_RATE;
 
   const nextGen = generation + 1;
-  let blockedCount = 0; // always 0 until task 2 adds the quarantine check that increments it
 
+  // ── Archive everyone who doesn't survive as an elite ────────────────────
+  const eliminated = evaluated.slice(ELITE_COUNT);
+  const newGraveyardEntries: GraveyardEntry[] = eliminated.map((ind) => ({
+    id: ind.id,
+    genome: ind.genome,
+    fitness: ind.fitness,
+    testEquity: evaluateGenome(ind.genome, testCloses).netEquity,
+    generationDied: generation,
+    reason: classifyElimination(ind),
+  }));
+  const nextGraveyard = [...graveyard, ...newGraveyardEntries].slice(-MAX_GRAVEYARD_SIZE);
+  const newQuarantineEntries = newGraveyardEntries.filter((e) => e.reason !== "outcompeted");
+  const nextQuarantine = [...quarantine, ...newQuarantineEntries].slice(-MAX_QUARANTINE_SIZE);
+
+  // ── Build the next population ───────────────────────────────────────────
   const next: Individual[] = evaluated.slice(0, ELITE_COUNT).map((ind, i) =>
     freshIndividual(`g${nextGen}-${i}`, ind.genome, nextGen, "elite", [ind.id])
   );
@@ -346,15 +436,41 @@ export function evolveGeneration(
     next.push(freshIndividual(`g${nextGen}-${next.length}`, randomGenome(), nextGen, "immigrant", []));
   }
 
+  const blockedEvents: BlockedEvent[] = [];
+
   while (next.length < POPULATION_SIZE) {
     const id = `g${nextGen}-${next.length}`;
-    if (Math.random() < 0.3) {
-      const parent = tournamentPick(evaluated);
-      next.push(freshIndividual(id, mutate(parent.genome, mutationRate), nextGen, "mutation", [parent.id]));
-    } else {
-      const parentA = tournamentPick(evaluated);
-      const parentB = tournamentPick(evaluated);
-      next.push(freshIndividual(id, mutate(crossover(parentA.genome, parentB.genome), mutationRate), nextGen, "crossover", [parentA.id, parentB.id]));
+    let placed = false;
+
+    for (let attempt = 0; attempt <= MAX_CHILD_RETRIES && !placed; attempt++) {
+      const useMutationOnly = Math.random() < 0.3;
+      const parent = useMutationOnly ? tournamentPick(evaluated) : null;
+      const parentA = useMutationOnly ? null : tournamentPick(evaluated);
+      const parentB = useMutationOnly ? null : tournamentPick(evaluated);
+      const candidateGenome = useMutationOnly
+        ? mutate(parent!.genome, mutationRate)
+        : mutate(crossover(parentA!.genome, parentB!.genome), mutationRate);
+
+      const match = nextQuarantine.length > 0 ? nearestQuarantineMatch(candidateGenome, nextQuarantine) : null;
+      const tooSimilar = match !== null && match.distance < QUARANTINE_SIMILARITY_THRESHOLD;
+
+      if (tooSimilar) {
+        blockedEvents.push({ generation: nextGen, tooSimilarToId: match!.entry.id });
+        if (attempt === MAX_CHILD_RETRIES) {
+          // Exhausted retries — fall back to a fresh random immigrant (not
+          // quarantine-checked) so the population always reaches full size.
+          next.push(freshIndividual(id, randomGenome(), nextGen, "immigrant", []));
+          placed = true;
+        }
+        continue;
+      }
+
+      next.push(
+        useMutationOnly
+          ? freshIndividual(id, candidateGenome, nextGen, "mutation", [parent!.id])
+          : freshIndividual(id, candidateGenome, nextGen, "crossover", [parentA!.id, parentB!.id])
+      );
+      placed = true;
     }
   }
 
@@ -366,10 +482,18 @@ export function evolveGeneration(
     testEquity: testResult.netEquity,
     buyAndHoldEquity: buyAndHoldEquity(testCloses),
     diversity,
-    blockedCount,
+    blockedCount: blockedEvents.length,
   };
 
-  return { nextPopulation: next, best, signal: { action, price: currentPrice }, historyEntry };
+  return {
+    nextPopulation: next,
+    best,
+    signal: { action, price: currentPrice },
+    historyEntry,
+    graveyard: nextGraveyard,
+    quarantine: nextQuarantine,
+    blockedEvents,
+  };
 }
 
 const STORAGE_PREFIX = "egy_ga_snapshot_v1";
