@@ -47,7 +47,7 @@ export default function GuidePage() {
           <GuideSection
             n="6"
             title="GA Bot"
-            body="The GA Bot tab runs the genetic algorithm engine. Toggle it on to start evolving. The bot fetches real 5-minute BTC candles from Binance, evaluates 24 strategy variants, and evolves toward better ones every 45 seconds. When the best strategy signals a trade, the bot executes it on your simulated balance automatically. A built-in daily stop-loss pauses the bot if simulated losses exceed 8% in one session."
+            body="The GA Bot tab controls the genetic algorithm engine — toggle it on to start evolving. It's one bot per account: once started, it keeps running and trading on your simulated balance no matter which tab or page you have open, and stays in sync if you open a second tab. The bot fetches real 5-minute BTC candles from Binance, evaluates 24 strategy variants, and evolves toward better ones every 45 seconds (or faster in demo mode). When the best strategy signals a trade, it executes automatically. A built-in daily stop-loss pauses the bot if simulated losses exceed 8% in one session. The engine only runs while at least one browser tab is open — it does not keep evolving after you close every tab."
           />
           <GuideSection
             n="7"

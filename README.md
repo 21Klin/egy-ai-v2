@@ -34,9 +34,9 @@ A live, browser-based algorithmic trading system that evolves its own BTC/USDT t
 
 ## What is EGY-AI?
 
-EGY-AI is a complete algorithmic trading platform where the trading strategy itself **evolves** rather than being hand-coded. Instead of fixed if/else rules, a population of 24 candidate strategies (genomes) is continuously evaluated against live Binance market data, and the fittest strategies survive and reproduce through genetic crossover and mutation — every 45 seconds, forever, in your browser.
+EGY-AI is a complete algorithmic trading platform where the trading strategy itself **evolves** rather than being hand-coded. Instead of fixed if/else rules, a population of 24 candidate strategies (genomes) is continuously evaluated against live Binance market data, and the fittest strategies survive and reproduce through genetic crossover and mutation — every 45 seconds, in your browser.
 
-No backend server is required for the core engine. Everything — the WebSocket data feed, the genetic algorithm, the trade simulation — runs client-side.
+No backend server is required for the core engine. Everything — the WebSocket data feed, the genetic algorithm, the trade simulation — runs client-side, which means it only evolves while at least one browser tab is open; it does not keep running after every tab is closed. History is saved (to `localStorage`, and to Firestore for logged-in accounts) and resumes right where it left off next time a tab is open.
 
 ## Research Question
 
@@ -212,7 +212,7 @@ Please keep PRs focused — one feature or fix per PR makes review much easier.
 No. All trades are simulated against a virtual 10,000 USDT balance. Market data is real and live; capital is not.
 
 **Can I run my own GA population?**
-Yes — every visitor gets their own independent GA session via `localStorage`. Nothing is shared between users unless you create an account and choose to make stats public.
+Yes. A logged-out guest gets an independent, in-memory GA session (reset on refresh). A logged-in account gets one persistent bot of its own, synced to Firestore — it survives refreshes and logging in on another device, and if you open two tabs at once they share the same bot (one keeps running it; the other just mirrors and can still control it) instead of each running its own copy. Nothing is shared between different accounts unless you choose to make stats public.
 
 **Why no backend server?**
 A deliberate design choice — it makes the system instantly accessible to anyone with a browser, with no infrastructure cost, and demonstrates that meaningful evolutionary computation is achievable client-side.
