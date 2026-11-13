@@ -52,7 +52,7 @@ export default function DashboardPage() {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
-  if (authLoading || profileLoading || !profile) {
+  if (authLoading || profileLoading || !profile || wallet.loading) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-slate-950">
         <span className="font-data text-sm text-slate-400">Loading your dashboard…</span>

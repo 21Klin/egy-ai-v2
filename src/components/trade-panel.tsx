@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Switch } from "./ui/switch";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "@/lib/use-toast";
 import { Input } from "./ui/input";
 import { useGaStore } from "@/lib/ga-store";
@@ -367,25 +367,13 @@ function GeneticAlgorithmTrader() {
   const loadingHistory = useGaStore((s) => s.loadingHistory);
   const historyError = useGaStore((s) => s.historyError);
 
-  const syncProfile = useSyncPublicProfileAfterTrade();
-  const lastGenerationRef = useRef(0);
-
   useEffect(() => { init(); }, [init]);
   useEffect(() => { if (price > 0) setCurrentPrice(price); }, [price, setCurrentPrice]);
 
-  // Mirror generation/best-fitness progress to the public profile whenever it changes.
-  // gaGenerations itself isn't persisted anywhere else — this component's own
-  // dashboard reads it live from the GA store; only the public profile needs a copy.
-  // Trade execution and the stop-loss watchdog live in GaBotRunner (mounted
-  // once near the app root) so the bot trades no matter which page is open —
-  // this component is just the Trading page's control/status panel for it.
-  useEffect(() => {
-    if (generation > 0 && generation !== lastGenerationRef.current) {
-      lastGenerationRef.current = generation;
-      syncProfile();
-    }
-  }, [generation, syncProfile]);
-
+  // Trade execution, the stop-loss watchdog, and mirroring generation
+  // progress to the public profile all live in GaBotRunner (mounted once
+  // near the app root) so the bot keeps working no matter which page is
+  // open — this component is just the Trading page's control/status panel.
   const handleToggle = (shouldRun: boolean) => {
     if (shouldRun) {
       start();

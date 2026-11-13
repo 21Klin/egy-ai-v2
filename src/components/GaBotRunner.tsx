@@ -43,12 +43,14 @@ export default function GaBotRunner() {
   const running = useGaStore((s) => s.running);
   const stop = useGaStore((s) => s.stop);
   const lastSignal = useGaStore((s) => s.lastSignal);
+  const generation = useGaStore((s) => s.generation);
 
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
 
   const sessionStartBalanceRef = useRef<number | null>(null);
   const lastActedSignalTimeRef = useRef(0);
+  const lastSyncedGenerationRef = useRef(0);
   /** Has this tab, as leader, ever looked at a signal yet? Guards against
    *  re-trading a signal it only just INHERITED — either from a page
    *  refresh restoring an already-executed `lastSignal`, or from winning
@@ -61,6 +63,20 @@ export default function GaBotRunner() {
   const syncProfile = () => {
     if (user && profile) syncPublicProfile(user.uid, profile);
   };
+
+  // Mirror generation progress to the public profile whenever it changes.
+  // This used to live in trade-panel.tsx's GA Bot tab too — same bug as
+  // trade execution: a bot run entirely from /ga-dashboard or /ga-demo
+  // would evolve for real but never update the public profile, since that
+  // effect only ever mounted when the Trading page's GA Bot tab was open.
+  // Leader-gated for the same reason as everything else here: every open
+  // tab sees the same `generation`, so without this guard every tab would
+  // redundantly write the same sync.
+  useEffect(() => {
+    if (!isLeader || generation === 0 || generation === lastSyncedGenerationRef.current) return;
+    lastSyncedGenerationRef.current = generation;
+    syncProfile();
+  }, [generation, isLeader]);
 
   // Stop-loss baseline: captured the moment the bot starts running (in
   // THIS tab's lifetime), reset once it stops.
