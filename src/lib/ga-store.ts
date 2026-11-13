@@ -44,12 +44,14 @@ import { createRun, saveRunState, appendGenerationDoc, getLatestRun } from './ga
 const GENERATION_INTERVAL_MS = 45 * 1000; // 45s per generation
 const HISTORY_REFRESH_INTERVAL_MS = 2 * 60 * 1000; // re-fetch fresh candles every 2 minutes while running
 const MAX_HISTORY_ENTRIES = 300;
+const MAX_RECENT_GENERATIONS = 16; // the lineage tree shows the last ~10-15 generations
 // Every genome needs MAX_POSSIBLE_SLOW_MA+5 warm-up bars, and that requirement
 // applies independently to both the train slice AND the test slice.
 const MIN_CLOSES_FOR_GENERATION = Math.ceil((MAX_POSSIBLE_SLOW_MA + 5) / (1 - TRAIN_RATIO));
 
 type Signal = { action: 'buy' | 'sell' | 'hold'; price: number; time: number };
 type LogEntry = { time: number; message: string };
+export type RecentGeneration = { generation: number; population: Individual[] };
 
 interface GaStoreState {
   running: boolean;
@@ -64,6 +66,8 @@ interface GaStoreState {
   graveyard: GraveyardEntry[];
   quarantine: GraveyardEntry[];
   repeatsBlockedTotal: number;
+  /** Last ~16 generations' full evaluated populations (real fitness, genomes, parentIds) — what the lineage tree draws from. */
+  recentGenerations: RecentGeneration[];
   /** Firestore gaRuns/{runId} this account's progress mirrors to. Null for guests, or before the first generation creates one. */
   runId: string | null;
   loadingRun: boolean;
@@ -99,6 +103,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   graveyard: [],
   quarantine: [],
   repeatsBlockedTotal: 0,
+  recentGenerations: [],
   runId: null,
   loadingRun: false,
   closes: [],
@@ -128,6 +133,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         graveyard: snap.graveyard ?? [],
         quarantine: snap.quarantine ?? [],
         repeatsBlockedTotal: snap.repeatsBlockedTotal ?? 0,
+        recentGenerations: snap.recentGenerations ?? [],
       });
     } else {
       set({ population: initialPopulation() });
@@ -159,7 +165,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   },
 
   runOneGeneration: () => {
-    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log, history, graveyard, quarantine, repeatsBlockedTotal } = get();
+    const { closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, log, history, graveyard, quarantine, repeatsBlockedTotal, recentGenerations } = get();
     if (closes.length < MIN_CLOSES_FOR_GENERATION) return;
 
     const { train, test } = splitTrainTest(closes);
@@ -173,6 +179,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       quarantine: nextQuarantine,
       blockedEvents,
       eliminatedThisGeneration,
+      evaluatedPopulation,
     } = evolveGeneration(pop, train, test, currentPrice, generation, graveyard, quarantine);
 
     const isNewBest = bestEverFitness === null || best.fitness > bestEverFitness;
@@ -193,6 +200,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     const nextLog = [generationLogEntry, ...blockLogEntries, ...log].slice(0, 30);
     const nextHistory = [...history, historyEntry].slice(-MAX_HISTORY_ENTRIES);
     const nextRepeatsBlockedTotal = repeatsBlockedTotal + blockedEvents.length;
+    const nextRecentGenerations = [...recentGenerations, { generation, population: evaluatedPopulation }].slice(-MAX_RECENT_GENERATIONS);
 
     set({
       generation: historyEntry.generation,
@@ -206,6 +214,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       graveyard: nextGraveyard,
       quarantine: nextQuarantine,
       repeatsBlockedTotal: nextRepeatsBlockedTotal,
+      recentGenerations: nextRecentGenerations,
     });
 
     saveSnapshot(
@@ -220,6 +229,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         graveyard: nextGraveyard,
         quarantine: nextQuarantine,
         repeatsBlockedTotal: nextRepeatsBlockedTotal,
+        recentGenerations: nextRecentGenerations,
       },
       get()._owner
     );
@@ -251,10 +261,11 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
           await appendGenerationDoc(owner, runId, {
             generation: historyEntry.generation,
             timestamp: Date.now(),
-            population: nextPopulation,
+            population: evaluatedPopulation,
             bestFitness: historyEntry.bestFitness,
             avgFitness: historyEntry.avgFitness,
             worstFitness: historyEntry.worstFitness,
+            bestGenome: historyEntry.bestGenome,
             testEquity: historyEntry.testEquity,
             buyAndHoldEquity: historyEntry.buyAndHoldEquity,
             diversity: historyEntry.diversity,
@@ -328,6 +339,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         graveyard: restored.state.graveyard,
         quarantine: restored.state.quarantine,
         repeatsBlockedTotal: restored.state.repeatsBlockedTotal,
+        recentGenerations: restored.recentGenerations,
         loadingRun: false,
       });
     } else {
@@ -345,6 +357,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         graveyard: snap?.graveyard ?? [],
         quarantine: snap?.quarantine ?? [],
         repeatsBlockedTotal: snap?.repeatsBlockedTotal ?? 0,
+        recentGenerations: snap?.recentGenerations ?? [],
         loadingRun: false,
       });
     }

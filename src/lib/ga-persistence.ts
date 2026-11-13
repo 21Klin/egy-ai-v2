@@ -53,6 +53,7 @@ export interface GenerationDoc {
   bestFitness: number;
   avgFitness: number;
   worstFitness: number;
+  bestGenome: Genome;
   testEquity: number;
   buyAndHoldEquity: number;
   diversity: number;
@@ -117,7 +118,12 @@ export async function appendGenerationDoc(uid: string, runId: string, entry: Gen
  */
 export async function getLatestRun(
   uid: string
-): Promise<{ runId: string; state: GaRunLiveState; recentHistory: GenerationHistoryEntry[] } | null> {
+): Promise<{
+  runId: string;
+  state: GaRunLiveState;
+  recentHistory: GenerationHistoryEntry[];
+  recentGenerations: { generation: number; population: Individual[] }[];
+} | null> {
   const runQuery = query(runsCol(uid), orderBy("startedAt", "desc"), limit(1));
   const runSnap = await getDocs(runQuery);
   if (runSnap.empty) return null;
@@ -140,19 +146,22 @@ export async function getLatestRun(
 
   const genQuery = query(generationsCol(uid, runId), orderBy("generation", "desc"), limit(50));
   const genSnap = await getDocs(genQuery);
-  const recentHistory: GenerationHistoryEntry[] = genSnap.docs
-    .map((d) => d.data() as GenerationDoc)
-    .sort((a, b) => a.generation - b.generation)
-    .map((g) => ({
-      generation: g.generation,
-      bestFitness: g.bestFitness,
-      avgFitness: g.avgFitness,
-      worstFitness: g.worstFitness,
-      testEquity: g.testEquity,
-      buyAndHoldEquity: g.buyAndHoldEquity,
-      diversity: g.diversity,
-      blockedCount: g.blockedCount,
-    }));
+  const genDocs = genSnap.docs.map((d) => d.data() as GenerationDoc).sort((a, b) => a.generation - b.generation);
 
-  return { runId, state, recentHistory };
+  const recentHistory: GenerationHistoryEntry[] = genDocs.map((g) => ({
+    generation: g.generation,
+    bestFitness: g.bestFitness,
+    avgFitness: g.avgFitness,
+    worstFitness: g.worstFitness,
+    bestGenome: g.bestGenome,
+    testEquity: g.testEquity,
+    buyAndHoldEquity: g.buyAndHoldEquity,
+    diversity: g.diversity,
+    blockedCount: g.blockedCount,
+  }));
+
+  // The lineage tree only needs the last ~16 generations, not all 50.
+  const recentGenerations = genDocs.slice(-16).map((g) => ({ generation: g.generation, population: g.population }));
+
+  return { runId, state, recentHistory, recentGenerations };
 }

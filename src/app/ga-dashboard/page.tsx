@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useGaStore } from "@/lib/ga-store";
+import { evaluateGenome, splitTrainTest, type Individual, type GraveyardEntry } from "@/lib/ga-engine";
+import LearningCurveChart from "@/components/ga/LearningCurveChart";
+import GenomeEvolutionChart from "@/components/ga/GenomeEvolutionChart";
+import DiversityMeter from "@/components/ga/DiversityMeter";
+import EvolutionTree from "@/components/ga/EvolutionTree";
+import GraveyardPanel from "@/components/ga/GraveyardPanel";
+import NodeDetailPanel from "@/components/ga/NodeDetailPanel";
 
 export default function GaDashboardPage() {
   const price = useStore((s) => s.price);
@@ -20,13 +27,32 @@ export default function GaDashboardPage() {
   const log = useGaStore((s) => s.log);
   const loadingHistory = useGaStore((s) => s.loadingHistory);
   const historyError = useGaStore((s) => s.historyError);
-  const historyLength = useGaStore((s) => s.closes.length);
+  const closes = useGaStore((s) => s.closes);
+  const history = useGaStore((s) => s.history);
+  const diversity = useGaStore((s) => s.diversity);
+  const graveyard = useGaStore((s) => s.graveyard);
+  const quarantine = useGaStore((s) => s.quarantine);
+  const repeatsBlockedTotal = useGaStore((s) => s.repeatsBlockedTotal);
+  const recentGenerations = useGaStore((s) => s.recentGenerations);
+
+  const [selected, setSelected] = useState<Individual | null>(null);
 
   useEffect(() => { init(); }, [init]);
   useEffect(() => { if (price > 0) setCurrentPrice(price); }, [price, setCurrentPrice]);
 
   const topFive = [...population].sort((a, b) => b.fitness - a.fitness).slice(0, 5);
   const maxFitness = Math.max(...topFive.map((i) => Math.max(i.fitness, 0)), 0.01);
+  const recentDiversity = history.slice(-30).map((h) => h.diversity);
+
+  const selectedGraveyardEntry: GraveyardEntry | null = useMemo(
+    () => (selected ? graveyard.find((g) => g.id === selected.id) ?? null : null),
+    [selected, graveyard]
+  );
+  const selectedLiveTestEquity = useMemo(() => {
+    if (!selected || selectedGraveyardEntry || closes.length === 0) return null;
+    const { test } = splitTrainTest(closes);
+    return evaluateGenome(selected.genome, test).netEquity;
+  }, [selected, selectedGraveyardEntry, closes]);
 
   return (
     <div className="circuit-grid relative min-h-[calc(100vh-5rem)] bg-slate-950 px-4 py-8 text-slate-50">
@@ -49,7 +75,7 @@ export default function GaDashboardPage() {
                 ? "Fetching real BTC/USDT candles from Binance…"
                 : historyError
                 ? "Could not load historical data."
-                : `${historyLength} candles loaded · real genetic algorithm · no fake numbers`}
+                : `${closes.length} candles loaded · real genetic algorithm · no fake numbers`}
             </p>
           </div>
 
@@ -97,9 +123,9 @@ export default function GaDashboardPage() {
           </section>
         )}
 
-        {/* STAT CARDS */}
         {!loadingHistory && (
           <>
+            {/* STAT CARDS */}
             <section className="grid gap-4 sm:grid-cols-3">
               <StatCard label="Generation" value={generation > 0 ? generation.toString() : "—"} sub="One full evolution cycle every 45s" />
               <StatCard
@@ -115,7 +141,26 @@ export default function GaDashboardPage() {
               />
             </section>
 
-            {/* BEST GENOME */}
+            {/* LEARNING CURVE + DIVERSITY */}
+            <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="data-flow-border rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-200">
+                  Did it get smarter?
+                </h2>
+                <p className="mb-3 text-[11px] text-slate-500">
+                  Best/avg fitness is scored on the data the GA trains on; champion equity is scored on data it has never seen.
+                </p>
+                <LearningCurveChart history={history} />
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-200">
+                  Diversity
+                </h2>
+                <DiversityMeter diversity={diversity} recent={recentDiversity} />
+              </div>
+            </section>
+
+            {/* BEST GENOME + EVOLUTION */}
             <section className="data-flow-border rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-200">
                 Best genome parameters
@@ -134,6 +179,57 @@ export default function GaDashboardPage() {
                   ))}
                 </div>
               )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-200">
+                Champion genome over time
+              </h2>
+              <p className="mb-3 text-[11px] text-slate-500">Each gene on its own scale — fast/slow MA are bar counts, RSI values are 0-100.</p>
+              <GenomeEvolutionChart history={history} />
+            </section>
+
+            {/* EVOLUTION TREE */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-200">
+                Evolution tree
+              </h2>
+              <p className="mb-3 text-[11px] text-slate-500">
+                Last {recentGenerations.length} generations · click any node for its genome, parents, and fate.
+              </p>
+              <EvolutionTree
+                recentGenerations={recentGenerations}
+                currentPopulation={population}
+                currentGeneration={generation}
+                graveyard={graveyard}
+                onSelect={setSelected}
+              />
+              {selected && (
+                <div className="mt-3">
+                  <NodeDetailPanel
+                    individual={selected}
+                    graveyardEntry={selectedGraveyardEntry}
+                    liveTestEquity={selectedLiveTestEquity}
+                    onClose={() => setSelected(null)}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/* GRAVEYARD / QUARANTINE */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-200">
+                Graveyard &amp; quarantine
+              </h2>
+              <GraveyardPanel
+                graveyard={graveyard}
+                quarantine={quarantine}
+                repeatsBlockedTotal={repeatsBlockedTotal}
+                onSelect={(entry) => {
+                  const found = [...recentGenerations.flatMap((g) => g.population), ...population].find((i) => i.id === entry.id);
+                  if (found) setSelected(found);
+                }}
+              />
             </section>
 
             {/* POPULATION BARS */}

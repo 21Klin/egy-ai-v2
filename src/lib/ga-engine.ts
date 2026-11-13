@@ -67,6 +67,8 @@ export type GenerationHistoryEntry = {
   bestFitness: number;
   avgFitness: number;
   worstFitness: number;
+  /** The generation's best genome — lets a chart show how each gene changed over time. */
+  bestGenome: Genome;
   /** The generation's best genome scored on the UNSEEN test window — never used for selection. */
   testEquity: number;
   /** Buy-and-hold return over that same test window, for comparison. */
@@ -108,6 +110,8 @@ export type GenerationSnapshot = {
   graveyard: GraveyardEntry[];
   quarantine: GraveyardEntry[];
   repeatsBlockedTotal: number;
+  /** Last ~16 generations' full evaluated populations, for the lineage tree. */
+  recentGenerations: { generation: number; population: Individual[] }[];
 };
 
 export const POPULATION_SIZE = 24;
@@ -116,7 +120,7 @@ export const IMMIGRANT_COUNT = 3;
 const TOURNAMENT_SIZE = 5;
 const MUTATION_RATE = 0.25;
 const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has collapsed
-const DIVERSITY_FLOOR = 0.08; // below this, raise mutation to fight premature convergence
+export const DIVERSITY_FLOOR = 0.08; // below this, raise mutation to fight premature convergence
 const TRANSACTION_COST = 0.0010; // 0.10%, matches Binance taker fee
 export const TRAIN_RATIO = 0.7;
 
@@ -439,6 +443,8 @@ export function evolveGeneration(
   blockedEvents: BlockedEvent[];
   /** Just this generation's fresh eliminations (a subset of the returned `graveyard`), for a per-generation audit record. */
   eliminatedThisGeneration: GraveyardEntry[];
+  /** This generation's full evaluated population (real fitness, not the unevaluated children in `nextPopulation`) — a lineage tree needs each generation's actual members, not just the survivors. */
+  evaluatedPopulation: Individual[];
 } {
   const evaluated: Individual[] = population.map((ind) => {
     const result = evaluateGenome(ind.genome, trainCloses);
@@ -527,6 +533,7 @@ export function evolveGeneration(
     bestFitness: best.fitness,
     avgFitness,
     worstFitness: worst.fitness,
+    bestGenome: best.genome,
     testEquity: testResult.netEquity,
     buyAndHoldEquity: buyAndHoldEquity(testCloses),
     diversity,
@@ -542,6 +549,7 @@ export function evolveGeneration(
     quarantine: nextQuarantine,
     blockedEvents,
     eliminatedThisGeneration: newGraveyardEntries,
+    evaluatedPopulation: evaluated,
   };
 }
 
