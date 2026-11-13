@@ -12,6 +12,7 @@ import DiversityMeter from "@/components/ga/DiversityMeter";
 import EvolutionTree from "@/components/ga/EvolutionTree";
 import GraveyardPanel from "@/components/ga/GraveyardPanel";
 import NodeDetailPanel from "@/components/ga/NodeDetailPanel";
+import BotStatusBadge from "@/components/ga/BotStatusBadge";
 
 export default function GaDashboardPage() {
   const price = useStore((s) => s.price);
@@ -92,10 +93,7 @@ export default function GaDashboardPage() {
             >
               Judge Demo →
             </Link>
-            <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 font-data text-xs">
-              <span className={`circuit-node ${running ? "" : "idle"}`} />
-              {loadingHistory ? "Loading data…" : running ? "Evolving" : "Idle"}
-            </div>
+            <BotStatusBadge />
             <div className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs">
               <Switch checked={demoMode} onCheckedChange={setDemoMode} aria-label="Toggle demo speed" />
               <span className="text-slate-300">{demoMode ? "Demo speed (4s)" : "Normal speed (45s)"}</span>

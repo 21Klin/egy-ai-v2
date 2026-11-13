@@ -118,6 +118,10 @@ export type GenerationSnapshot = {
   quarantinedTotal: number;
   /** Last ~16 generations' full evaluated populations, for the lineage tree. */
   recentGenerations: { generation: number; population: Individual[] }[];
+  /** Whether the bot was running when this was saved — read back on refresh/login so it resumes automatically (whichever tab becomes leader; see ga-leader.ts). */
+  running: boolean;
+  /** The Firestore gaRuns/{runId} this snapshot mirrors, if any — so every tab (and a fresh refresh) can show the same "Run ID" before Firestore's own read even resolves. */
+  runId: string | null;
 };
 
 export const POPULATION_SIZE = 24;
@@ -562,13 +566,23 @@ export function evolveGeneration(
 const STORAGE_PREFIX = "egy_ga_snapshot_v1";
 
 /**
+ * Exported so ga-store.ts can recognize this exact key in a `storage`
+ * event — that event is how a follower tab (see ga-leader.ts) picks up
+ * the leader tab's latest snapshot in real time, for free, with no extra
+ * message-passing needed for state (only for commands).
+ */
+export function snapshotStorageKey(owner: string = "guest"): string {
+  return `${STORAGE_PREFIX}:${owner}`;
+}
+
+/**
  * Snapshots are namespaced by account (uid, or "guest") so switching
  * accounts in the same browser never shows one account's bot state
  * (population, generation, log) to another.
  */
 export function saveSnapshot(snapshot: GenerationSnapshot, owner: string = "guest") {
   try {
-    localStorage.setItem(`${STORAGE_PREFIX}:${owner}`, JSON.stringify(snapshot));
+    localStorage.setItem(snapshotStorageKey(owner), JSON.stringify(snapshot));
   } catch {
     // ignore storage errors (e.g. private browsing)
   }
@@ -576,7 +590,7 @@ export function saveSnapshot(snapshot: GenerationSnapshot, owner: string = "gues
 
 export function loadSnapshot(owner: string = "guest"): GenerationSnapshot | null {
   try {
-    const raw = localStorage.getItem(`${STORAGE_PREFIX}:${owner}`);
+    const raw = localStorage.getItem(snapshotStorageKey(owner));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

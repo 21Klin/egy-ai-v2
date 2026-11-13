@@ -37,6 +37,7 @@ import NodeDetailPanel from "@/components/ga/NodeDetailPanel";
 import NarrationFeed from "@/components/ga/NarrationFeed";
 import GenOneVsNowCard from "@/components/ga/GenOneVsNowCard";
 import ReportCard from "@/components/ga/ReportCard";
+import BotStatusBadge from "@/components/ga/BotStatusBadge";
 import { useGaReplay, REPLAY_SPEED_OPTIONS } from "@/components/ga/useGaReplay";
 
 type Mode = "live" | "replay";
@@ -323,10 +324,7 @@ function LiveControls({
   const dataReady = !loadingHistory && !historyError && closesCount > 0;
   return (
     <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <span className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1.5 font-data text-xs">
-        <span className={`circuit-node ${running ? "" : "idle"}`} />
-        {loadingHistory ? "Loading data…" : running ? "Evolving" : "Paused"}
-      </span>
+      <BotStatusBadge />
       <button
         onClick={running ? stop : start}
         disabled={!dataReady}

@@ -49,6 +49,8 @@ export interface GaRunLiveState {
   strategiesCreatedTotal: number;
   eliminatedTotal: number;
   quarantinedTotal: number;
+  /** Was the bot running when this was written — so logging in on a new device resumes it too (see ga-store.ts / ga-leader.ts). */
+  running: boolean;
 }
 
 export interface GenerationDoc {
@@ -113,6 +115,7 @@ export async function createRun(uid: string): Promise<string> {
     strategiesCreatedTotal: POPULATION_SIZE,
     eliminatedTotal: 0,
     quarantinedTotal: 0,
+    running: false,
   });
   return ref.id;
 }
@@ -163,6 +166,7 @@ export async function getLatestRun(
     strategiesCreatedTotal: data.strategiesCreatedTotal ?? POPULATION_SIZE,
     eliminatedTotal: data.eliminatedTotal ?? 0,
     quarantinedTotal: data.quarantinedTotal ?? 0,
+    running: data.running ?? false,
   };
 
   const genQuery = query(generationsCol(uid, runId), orderBy("generation", "desc"), limit(50));

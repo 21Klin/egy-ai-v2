@@ -17,9 +17,8 @@ import { useGaStore } from "@/lib/ga-store";
 import { useAuthStore } from "@/lib/auth-store";
 import { useProfileStore } from "@/lib/profile-store";
 import { syncPublicProfile } from "@/lib/public-profile";
+import BotStatusBadge from "./ga/BotStatusBadge";
 import Link from "next/link";
-
-const DAILY_STOP_LOSS_PCT = 0.08;
 
 /** After a trade completes, mirror the toggled-on stats out to the public profile (no-op for guests / logged-out). */
 function useSyncPublicProfileAfterTrade() {
@@ -355,12 +354,7 @@ function LeverageTrading() {
 
 function GeneticAlgorithmTrader() {
   const price = useStore((s) => s.price);
-  const buy = useWalletStore((s) => s.buy);
-  const sell = useWalletStore((s) => s.sell);
-  const btcBalance = useWalletStore((s) => s.btcBalance);
-  const usdtBalance = useWalletStore((s) => s.usdtBalance);
   const walletLoading = useWalletStore((s) => s.loading);
-  const addBotHistoryEntry = useStore((s) => s.addBotHistoryEntry);
 
   const init = useGaStore((s) => s.init);
   const setCurrentPrice = useGaStore((s) => s.setCurrentPrice);
@@ -374,9 +368,6 @@ function GeneticAlgorithmTrader() {
   const historyError = useGaStore((s) => s.historyError);
 
   const syncProfile = useSyncPublicProfileAfterTrade();
-  const sessionStartBalanceRef = useRef<number | null>(null);
-  const [stopLossTriggered, setStopLossTriggered] = useState(false);
-  const lastActedSignalTimeRef = useRef(0);
   const lastGenerationRef = useRef(0);
 
   useEffect(() => { init(); }, [init]);
@@ -385,6 +376,9 @@ function GeneticAlgorithmTrader() {
   // Mirror generation/best-fitness progress to the public profile whenever it changes.
   // gaGenerations itself isn't persisted anywhere else — this component's own
   // dashboard reads it live from the GA store; only the public profile needs a copy.
+  // Trade execution and the stop-loss watchdog live in GaBotRunner (mounted
+  // once near the app root) so the bot trades no matter which page is open —
+  // this component is just the Trading page's control/status panel for it.
   useEffect(() => {
     if (generation > 0 && generation !== lastGenerationRef.current) {
       lastGenerationRef.current = generation;
@@ -392,59 +386,8 @@ function GeneticAlgorithmTrader() {
     }
   }, [generation, syncProfile]);
 
-  // Stop-loss
-  useEffect(() => {
-    if (running) {
-      if (sessionStartBalanceRef.current === null) {
-        sessionStartBalanceRef.current = usdtBalance + btcBalance * price;
-      }
-      setStopLossTriggered(false);
-    } else {
-      sessionStartBalanceRef.current = null;
-    }
-  }, [running]);
-
-  useEffect(() => {
-    if (!running || sessionStartBalanceRef.current === null) return;
-    const currentTotal = usdtBalance + btcBalance * price;
-    const loss = (sessionStartBalanceRef.current - currentTotal) / sessionStartBalanceRef.current;
-    if (loss >= DAILY_STOP_LOSS_PCT) {
-      stop();
-      setStopLossTriggered(true);
-      toast({
-        title: "Stop-loss triggered",
-        description: `Bot paused: portfolio dropped ${(loss * 100).toFixed(1)}% this session.`,
-        variant: "destructive",
-      });
-    }
-  }, [usdtBalance, btcBalance, price, running, stop]);
-
-  // Execute bot trades — balances + win/loss stats are all handled inside the
-  // wallet transaction itself (see wallet.ts); this just logs the cosmetic
-  // bot-history feed and mirrors the result to the public profile.
-  useEffect(() => {
-    if (!lastSignal || lastSignal.time === lastActedSignalTimeRef.current || walletLoading) return;
-    lastActedSignalTimeRef.current = lastSignal.time;
-
-    (async () => {
-      if (lastSignal.action === "buy") {
-        const err = await buy(100, "bot");
-        if (err) return;
-        addBotHistoryEntry({ time: Date.now(), side: "BUY", price: lastSignal.price, size: 100 / lastSignal.price });
-        syncProfile();
-      } else if (lastSignal.action === "sell" && btcBalance > 0) {
-        const amt = Math.min(100 / lastSignal.price, btcBalance);
-        const err = await sell(amt, "bot");
-        if (err) return;
-        addBotHistoryEntry({ time: Date.now(), side: "SELL", price: lastSignal.price, size: amt });
-        syncProfile();
-      }
-    })();
-  }, [lastSignal, buy, sell, btcBalance, walletLoading, addBotHistoryEntry, syncProfile]);
-
   const handleToggle = (shouldRun: boolean) => {
     if (shouldRun) {
-      setStopLossTriggered(false);
       start();
       toast.success("GA Bot started", { description: "Evolving on real BTC/USDT candles." });
     } else {
@@ -459,20 +402,12 @@ function GeneticAlgorithmTrader() {
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <div className="space-y-1">
           <h3 className="text-base font-semibold tracking-tight text-slate-100">Genetic Algorithm Bot</h3>
-          <p className={cn("font-data text-xs", running ? "text-emerald-300" : stopLossTriggered ? "text-red-300" : "text-slate-500")}>
-            {running ? "● EVOLVING" : stopLossTriggered ? "● STOP-LOSS TRIGGERED" : "● IDLE"}
-          </p>
+          <BotStatusBadge />
         </div>
         <Switch checked={running} onCheckedChange={handleToggle} disabled={loadingHistory || walletLoading} aria-label="Toggle GA Bot" />
       </div>
 
       {historyError && <p className="text-xs text-amber-300">{historyError}</p>}
-
-      {stopLossTriggered && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-          <strong>Stop-loss triggered.</strong> Bot lost more than {DAILY_STOP_LOSS_PCT * 100}% of session-start balance. Toggle to resume.
-        </div>
-      )}
 
       <div className="grid grid-cols-2 gap-3 text-sm bg-slate-900/30 p-3 rounded-lg border border-slate-800">
         <div className="text-slate-400">Generation</div>
@@ -484,7 +419,7 @@ function GeneticAlgorithmTrader() {
         <div className="text-slate-400">Last signal</div>
         <div className="text-right font-data">{lastSignal?.action.toUpperCase() ?? "—"}</div>
         <div className="text-slate-400">Stop-loss</div>
-        <div className="text-right font-data text-slate-400">{DAILY_STOP_LOSS_PCT * 100}% limit</div>
+        <div className="text-right font-data text-slate-400">8% limit</div>
       </div>
 
       <Link href="/ga-dashboard" className="block text-center font-data text-xs text-emerald-300 underline-offset-4 hover:underline">

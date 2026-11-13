@@ -16,12 +16,29 @@
  * there is exactly one population, one generation counter, one
  * log — shared by every component that reads this store.
  *
+ * That singleton is per-TAB, though — two browser tabs are two
+ * separate JS contexts, each with its own Zustand instance. So
+ * there's a second layer on top: exactly one open tab per account
+ * is elected "leader" and runs the real engine; every other tab is
+ * a "follower" that mirrors the leader's state and relays actions
+ * (Start/Stop/Reset/Step/speed) to it instead of acting on them
+ * directly. See ga-leader.ts for the election + relay mechanics,
+ * and `_dispatch` below for how every mutating action routes through
+ * it. Followers pick up the leader's progress via the browser's own
+ * `storage` event firing when the leader writes its localStorage
+ * snapshot — no extra state-sync plumbing needed.
+ *
  * Persistence has two layers: localStorage (always, instant, works
  * offline/logged-out) and Firestore (best-effort, logged-in only —
  * see ga-persistence.ts). Firestore writes are fire-and-forget and
  * never block a generation from completing locally; if they fail
  * (offline, or the account's Firestore rules aren't deployed yet),
  * the bot keeps running off localStorage exactly as it always has.
+ *
+ * `running` is also part of the persisted snapshot/Firestore state,
+ * so a refresh (or logging in on a new device) restores it and the
+ * tab that wins leadership resumes the engine automatically — see
+ * `_setupOwnerSync`'s onBecomeLeader.
  */
 
 import { create } from 'zustand';
@@ -36,10 +53,12 @@ import {
   fetchHistoricalCloses,
   saveSnapshot,
   loadSnapshot,
+  snapshotStorageKey,
   MAX_POSSIBLE_SLOW_MA,
   TRAIN_RATIO,
 } from './ga-engine';
 import { createRun, saveRunState, appendGenerationDoc, getLatestRun } from './ga-persistence';
+import { acquireLeadership, createGaChannel, sendGaCommand, type GaCommandAction } from './ga-leader';
 
 const GENERATION_INTERVAL_MS = 45 * 1000; // normal: 45s per generation
 const DEMO_INTERVAL_MS = 4 * 1000; // demo mode (task 5): ~3-5s so judges watch many generations live
@@ -56,6 +75,8 @@ export type RecentGeneration = { generation: number; population: Individual[] };
 
 interface GaStoreState {
   running: boolean;
+  /** True on exactly one open tab per account — the one actually ticking the engine. See ga-leader.ts. */
+  isLeader: boolean;
   demoMode: boolean;
   generation: number;
   population: Individual[];
@@ -87,10 +108,14 @@ interface GaStoreState {
   _historyRefreshIntervalId: ReturnType<typeof setInterval> | null;
   _hasInitialized: boolean;
   _owner: string;
+  _channel: BroadcastChannel | null;
+  _releaseLeadership: (() => void) | null;
+  _storageHandler: ((e: StorageEvent) => void) | null;
 
   init: () => void;
   setCurrentPrice: (price: number) => void;
   loadHistory: () => Promise<void>;
+  /** Public, UI-facing "run exactly one generation and pause" (step mode) — routes through the leader like every other action. */
   runOneGeneration: () => void;
   start: () => void;
   stop: () => void;
@@ -100,10 +125,26 @@ interface GaStoreState {
   resetRun: () => void;
   /** Switches the bot to a different account's isolated state (stops it, clears in-memory population/log, restores that account's latest Firestore run, falling back to its local snapshot). "guest" for logged-out visitors (localStorage only, never touches Firestore). */
   resetForOwner: (owner: string) => Promise<void>;
+
+  /** Routes a user action: if this tab is the leader, perform it directly; otherwise relay it to whichever tab is. */
+  _dispatch: (action: GaCommandAction, payload?: unknown) => void;
+  _runOneGenerationLocal: () => void;
+  _startEngineLocal: () => void;
+  _stopEngineLocal: () => void;
+  _setDemoModeLocal: (enabled: boolean) => void;
+  _resetRunLocal: () => void;
+  /** Writes the CURRENT in-memory state's `running` flag out immediately (localStorage + Firestore), instead of waiting for the next generation's own save — otherwise stopping the bot right after it starts (before a generation completes) wouldn't persist, and a refresh could wrongly auto-resume it. */
+  _persistRunningNow: () => void;
+  /** Tears down this tab's leadership/channel/listener for whatever owner it had, then sets up fresh ones for the new owner — called once from init() and again on every resetForOwner(). */
+  _setupOwnerSync: (owner: string) => void;
+  _teardownOwnerSync: () => void;
+  /** Applies a freshly-written snapshot (this tab's own write, or — via the `storage` event — another tab's) into the live state. */
+  _applySnapshot: (snap: ReturnType<typeof loadSnapshot>) => void;
 }
 
 export const useGaStore = create<GaStoreState>((set, get) => ({
   running: false,
+  isLeader: false,
   demoMode: false,
   generation: 0,
   population: [],
@@ -131,6 +172,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   _historyRefreshIntervalId: null,
   _hasInitialized: false,
   _owner: 'guest',
+  _channel: null,
+  _releaseLeadership: null,
+  _storageHandler: null,
 
   init: () => {
     if (get()._hasInitialized) return;
@@ -155,12 +199,18 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         eliminatedTotal: snap.eliminatedTotal ?? 0,
         quarantinedTotal: snap.quarantinedTotal ?? 0,
         recentGenerations: snap.recentGenerations ?? [],
+        running: snap.running ?? false,
+        runId: snap.runId ?? null,
       });
     } else {
       const fresh = initialPopulation();
       set({ population: fresh, strategiesCreatedTotal: fresh.length });
     }
 
+    // Leadership is requested only now, after state is fully restored, so
+    // the "was it running?" check inside onBecomeLeader below sees the
+    // real restored value instead of racing it.
+    get()._setupOwnerSync(get()._owner);
     get().loadHistory();
   },
 
@@ -186,11 +236,46 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     }
   },
 
-  runOneGeneration: () => {
+  // ── Public, UI-facing actions — every one just dispatches ──────────────
+  runOneGeneration: () => get()._dispatch('step'),
+  start: () => get()._dispatch('start'),
+  stop: () => get()._dispatch('stop'),
+  setDemoMode: (enabled) => get()._dispatch('setDemoMode', enabled),
+  resetRun: () => get()._dispatch('resetRun'),
+
+  _dispatch: (action, payload) => {
+    if (get().isLeader) {
+      switch (action) {
+        case 'start':
+          get()._startEngineLocal();
+          break;
+        case 'stop':
+          get()._stopEngineLocal();
+          break;
+        case 'resetRun':
+          get()._resetRunLocal();
+          break;
+        case 'step':
+          get()._runOneGenerationLocal();
+          break;
+        case 'setDemoMode':
+          get()._setDemoModeLocal(payload as boolean);
+          break;
+      }
+    } else {
+      // Not the leader — relay to whichever tab is. The leader will persist
+      // the result (including `running`) and this tab picks it up via the
+      // `storage` event almost immediately, same as any other follower sync.
+      sendGaCommand(get()._channel, action, payload);
+    }
+  },
+
+  // ── Real engine logic — only ever runs on the leader tab ───────────────
+  _runOneGenerationLocal: () => {
     const {
       closes, population, currentPrice, generation, bestEverFitness, bestEverGenome, firstChampionGenome,
       log, history, graveyard, quarantine, repeatsBlockedTotal, recentGenerations,
-      strategiesCreatedTotal, eliminatedTotal, quarantinedTotal,
+      strategiesCreatedTotal, eliminatedTotal, quarantinedTotal, running, runId,
     } = get();
     if (closes.length < MIN_CLOSES_FOR_GENERATION) return;
 
@@ -269,6 +354,8 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         eliminatedTotal: nextEliminatedTotal,
         quarantinedTotal: nextQuarantinedTotal,
         recentGenerations: nextRecentGenerations,
+        running,
+        runId,
       },
       get()._owner
     );
@@ -281,12 +368,12 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     if (owner !== 'guest') {
       (async () => {
         try {
-          let runId = get().runId;
-          if (!runId) {
-            runId = await createRun(owner);
-            set({ runId });
+          let activeRunId = get().runId;
+          if (!activeRunId) {
+            activeRunId = await createRun(owner);
+            set({ runId: activeRunId });
           }
-          await saveRunState(owner, runId, {
+          await saveRunState(owner, activeRunId, {
             generation: historyEntry.generation,
             population: nextPopulation,
             bestEverFitness: updatedBestFitness,
@@ -300,8 +387,9 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
             strategiesCreatedTotal: nextStrategiesCreatedTotal,
             eliminatedTotal: nextEliminatedTotal,
             quarantinedTotal: nextQuarantinedTotal,
+            running: get().running,
           });
-          await appendGenerationDoc(owner, runId, {
+          await appendGenerationDoc(owner, activeRunId, {
             generation: historyEntry.generation,
             timestamp: Date.now(),
             population: evaluatedPopulation,
@@ -322,37 +410,86 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
     }
   },
 
-  start: () => {
+  _startEngineLocal: () => {
     if (get()._intervalId) return;
     set({ running: true });
-    get().runOneGeneration();
-    const id = setInterval(() => get().runOneGeneration(), get().demoMode ? DEMO_INTERVAL_MS : GENERATION_INTERVAL_MS);
+    get()._persistRunningNow(); // commit "running" immediately — runOneGenerationLocal below can bail early (e.g. candles still loading) without saving
+    get()._runOneGenerationLocal();
+    const id = setInterval(() => get()._runOneGenerationLocal(), get().demoMode ? DEMO_INTERVAL_MS : GENERATION_INTERVAL_MS);
     const historyId = setInterval(() => get().loadHistory(), HISTORY_REFRESH_INTERVAL_MS);
     set({ _intervalId: id, _historyRefreshIntervalId: historyId });
   },
 
-  stop: () => {
+  _stopEngineLocal: () => {
     const id = get()._intervalId;
     if (id) clearInterval(id);
     const historyId = get()._historyRefreshIntervalId;
     if (historyId) clearInterval(historyId);
     set({ running: false, _intervalId: null, _historyRefreshIntervalId: null });
+    get()._persistRunningNow();
   },
 
-  setDemoMode: (enabled) => {
+  _persistRunningNow: () => {
+    const s = get();
+    const owner = s._owner;
+    saveSnapshot(
+      {
+        generation: s.generation,
+        population: s.population,
+        bestEverFitness: s.bestEverFitness,
+        bestEverGenome: s.bestEverGenome,
+        firstChampionGenome: s.firstChampionGenome,
+        lastSignal: s.lastSignal,
+        log: s.log,
+        history: s.history,
+        graveyard: s.graveyard,
+        quarantine: s.quarantine,
+        repeatsBlockedTotal: s.repeatsBlockedTotal,
+        strategiesCreatedTotal: s.strategiesCreatedTotal,
+        eliminatedTotal: s.eliminatedTotal,
+        quarantinedTotal: s.quarantinedTotal,
+        recentGenerations: s.recentGenerations,
+        running: s.running,
+        runId: s.runId,
+      },
+      owner
+    );
+    if (owner !== 'guest' && s.runId) {
+      saveRunState(owner, s.runId, {
+        generation: s.generation,
+        population: s.population,
+        bestEverFitness: s.bestEverFitness,
+        bestEverGenome: s.bestEverGenome,
+        firstChampionGenome: s.firstChampionGenome,
+        lastSignal: s.lastSignal,
+        log: s.log,
+        graveyard: s.graveyard,
+        quarantine: s.quarantine,
+        repeatsBlockedTotal: s.repeatsBlockedTotal,
+        strategiesCreatedTotal: s.strategiesCreatedTotal,
+        eliminatedTotal: s.eliminatedTotal,
+        quarantinedTotal: s.quarantinedTotal,
+        running: s.running,
+      }).catch(() => {
+        // best-effort — see file header
+      });
+    }
+  },
+
+  _setDemoModeLocal: (enabled) => {
     set({ demoMode: enabled });
     const id = get()._intervalId;
     if (id) {
       // already running — restart the generation timer so the new cadence
       // takes effect immediately instead of after the current wait finishes
       clearInterval(id);
-      const newId = setInterval(() => get().runOneGeneration(), enabled ? DEMO_INTERVAL_MS : GENERATION_INTERVAL_MS);
+      const newId = setInterval(() => get()._runOneGenerationLocal(), enabled ? DEMO_INTERVAL_MS : GENERATION_INTERVAL_MS);
       set({ _intervalId: newId });
     }
   },
 
-  resetRun: () => {
-    get().stop();
+  _resetRunLocal: () => {
+    get()._stopEngineLocal();
     const fresh = initialPopulation();
     const owner = get()._owner;
     const resetState = {
@@ -373,6 +510,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       quarantinedTotal: 0,
       recentGenerations: [],
       runId: null, // the next generation creates a brand-new Firestore run doc; the old run's docs are left exactly as they are
+      running: false,
     };
     set(resetState);
     saveSnapshot(resetState, owner);
@@ -381,6 +519,11 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
   resetForOwner: async (owner) => {
     const state = get();
     if (state._owner === owner) return;
+
+    // Tear down the OLD owner's leadership/channel immediately — don't wait
+    // for the restore below — so any other open tab still on that account
+    // can pick up leadership right away instead of waiting out a stale lock.
+    get()._teardownOwnerSync();
     if (state._intervalId) clearInterval(state._intervalId);
     if (state._historyRefreshIntervalId) clearInterval(state._historyRefreshIntervalId);
 
@@ -388,6 +531,7 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
       _owner: owner,
       _hasInitialized: true,
       running: false,
+      isLeader: false,
       _intervalId: null,
       _historyRefreshIntervalId: null,
       loadingRun: true,
@@ -426,12 +570,13 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         eliminatedTotal: restored.state.eliminatedTotal,
         quarantinedTotal: restored.state.quarantinedTotal,
         recentGenerations: restored.recentGenerations,
+        running: restored.state.running,
         loadingRun: false,
       });
     } else {
       const snap = loadSnapshot(owner);
       set({
-        runId: null,
+        runId: snap?.runId ?? null,
         generation: snap?.generation ?? 0,
         population: snap?.population ?? initialPopulation(),
         bestEverFitness: snap?.bestEverFitness ?? null,
@@ -448,10 +593,106 @@ export const useGaStore = create<GaStoreState>((set, get) => ({
         eliminatedTotal: snap?.eliminatedTotal ?? 0,
         quarantinedTotal: snap?.quarantinedTotal ?? 0,
         recentGenerations: snap?.recentGenerations ?? [],
+        running: snap?.running ?? false,
         loadingRun: false,
       });
     }
 
+    // Leadership is requested only now, after the restore above has landed,
+    // so onBecomeLeader's "was it running?" check sees the real value.
+    get()._setupOwnerSync(owner);
     get().loadHistory();
+  },
+
+  // ── Cross-tab plumbing ──────────────────────────────────────────────────
+  _applySnapshot: (snap) => {
+    if (!snap) return;
+    set({
+      generation: snap.generation,
+      population: snap.population,
+      bestEverFitness: snap.bestEverFitness,
+      bestEverGenome: snap.bestEverGenome,
+      firstChampionGenome: snap.firstChampionGenome ?? null,
+      lastSignal: snap.lastSignal,
+      log: snap.log,
+      history: snap.history ?? [],
+      diversity: snap.history?.[snap.history.length - 1]?.diversity ?? get().diversity,
+      graveyard: snap.graveyard ?? [],
+      quarantine: snap.quarantine ?? [],
+      repeatsBlockedTotal: snap.repeatsBlockedTotal ?? 0,
+      strategiesCreatedTotal: snap.strategiesCreatedTotal ?? 0,
+      eliminatedTotal: snap.eliminatedTotal ?? 0,
+      quarantinedTotal: snap.quarantinedTotal ?? 0,
+      recentGenerations: snap.recentGenerations ?? [],
+      running: snap.running ?? false,
+      runId: snap.runId ?? get().runId,
+    });
+  },
+
+  _teardownOwnerSync: () => {
+    get()._releaseLeadership?.();
+    get()._channel?.close();
+    const handler = get()._storageHandler;
+    if (handler && typeof window !== 'undefined') window.removeEventListener('storage', handler);
+    set({ _channel: null, _releaseLeadership: null, _storageHandler: null, isLeader: false });
+  },
+
+  _setupOwnerSync: (owner) => {
+    if (typeof window === 'undefined') return;
+
+    const channel = createGaChannel(owner);
+    if (channel) {
+      channel.onmessage = (event: MessageEvent) => {
+        const msg = event.data;
+        if (!msg || msg.type !== 'command') return;
+        if (!get().isLeader) return; // only the leader acts on commands; see _dispatch
+        switch (msg.action as GaCommandAction) {
+          case 'start':
+            get()._startEngineLocal();
+            break;
+          case 'stop':
+            get()._stopEngineLocal();
+            break;
+          case 'resetRun':
+            get()._resetRunLocal();
+            break;
+          case 'step':
+            get()._runOneGenerationLocal();
+            break;
+          case 'setDemoMode':
+            get()._setDemoModeLocal(msg.payload as boolean);
+            break;
+        }
+      };
+    }
+
+    const key = snapshotStorageKey(owner);
+    const handler = (event: StorageEvent) => {
+      if (event.key !== key || get().isLeader) return; // the leader is the source of truth; don't re-apply its own write
+      get()._applySnapshot(loadSnapshot(owner));
+    };
+    window.addEventListener('storage', handler);
+
+    const release = acquireLeadership(
+      owner,
+      () => {
+        set({ isLeader: true });
+        // Resume automatically if this account's bot was running before
+        // (a refresh, or this tab just won leadership from one that closed).
+        if (get().running) get()._startEngineLocal();
+      },
+      () => {
+        // Lost leadership (voluntary release, or this tab is closing) —
+        // just stop OUR OWN interval; never flip the shared `running` flag,
+        // since another tab may be about to pick up leadership and continue.
+        const id = get()._intervalId;
+        if (id) clearInterval(id);
+        const historyId = get()._historyRefreshIntervalId;
+        if (historyId) clearInterval(historyId);
+        set({ isLeader: false, _intervalId: null, _historyRefreshIntervalId: null });
+      }
+    );
+
+    set({ _channel: channel, _storageHandler: handler, _releaseLeadership: release });
   },
 }));
