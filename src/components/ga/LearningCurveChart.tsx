@@ -56,14 +56,15 @@ export default function LearningCurveChart({ history }: { history: GenerationHis
             formatter={(value: number) => value.toFixed(4)}
           />
           <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-          <Line type="monotone" dataKey="Best fitness (train)" stroke="#3987e5" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="Avg fitness (train)" stroke="#d95926" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="Champion equity (unseen data)" stroke="#199e70" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="Best fitness (train)" name="Best fitness (train)" stroke="#3987e5" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="Avg fitness (train)" name="Avg fitness (train)" stroke="#d95926" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="Champion equity (unseen data)" name="Champion equity (unseen data)" stroke="#199e70" strokeWidth={2} dot={false} />
           <Line
             type="monotone"
             dataKey="Buy & hold (same window)"
+            name="Buy & hold (same window)"
             stroke="#64748b"
-            strokeWidth={1.5}
+            strokeWidth={2}
             strokeDasharray="4 4"
             dot={false}
           />

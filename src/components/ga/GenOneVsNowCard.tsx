@@ -63,10 +63,10 @@ export default function GenOneVsNowCard({
         }`}
       >
         {improved
-          ? `Improved: +${(delta * 100).toFixed(2)}% more equity on unseen data than generation 1.`
+          ? `Improved: +${(delta * 100).toFixed(1)} percentage points more equity on unseen data than generation 1.`
           : same
           ? "No measurable change on unseen data since generation 1 — shown honestly."
-          : `Honestly: the current champion is not better than generation 1 on unseen data (${(delta * 100).toFixed(2)}%).`}
+          : `Honestly: the current champion is not better than generation 1 on unseen data (${(delta * 100).toFixed(1)} percentage points).`}
       </p>
       <p className="text-xs text-slate-500">
         {sameWindow
