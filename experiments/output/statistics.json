@@ -1,0 +1,1286 @@
+{
+  "rates": [
+    0.05,
+    0.25,
+    0.6
+  ],
+  "regimes": [
+    "uptrend",
+    "downtrend",
+    "sideways"
+  ],
+  "crashWindows": [
+    "crash_covid_2020",
+    "crash_terra_luna_2022",
+    "crash_ftx_2022"
+  ],
+  "overall": {
+    "label": "overall (main experiment)",
+    "n": 270,
+    "finalReturnPct": {
+      "mean": 0.11924798088984956,
+      "std": 3.1796400028451113
+    },
+    "gen1ReturnPct": {
+      "mean": 0.07293805633781882,
+      "std": 3.227019953094913
+    },
+    "buyHoldReturnPct": {
+      "mean": -2.1237867304594307,
+      "std": 5.331815083465894
+    },
+    "pctBeatsGen1": 60.74074074074074,
+    "pctBeatsBuyHold": 48.888888888888886,
+    "meanMaxDrawdownPct": 4.399608910974722,
+    "meanWinRatePct": 25.914141594604494,
+    "signTestVsGen1": {
+      "n": 268,
+      "wins": 164,
+      "pValue": 0.0002972626542362047,
+      "winPct": 61.19402985074627
+    },
+    "signTestVsBuyHold": {
+      "n": 270,
+      "wins": 132,
+      "pValue": 0.7609720300111839,
+      "winPct": 48.888888888888886
+    },
+    "bootstrapCi95VsGen1Pct": {
+      "low": -0.16986100668817614,
+      "high": 0.23652866365094385
+    },
+    "bootstrapCi95VsBuyHoldPct": {
+      "low": 1.450273881694803,
+      "high": 3.0537024495993474
+    },
+    "meanGenerationOfConvergence": 12.12781954887218,
+    "convergedFraction": 0.9851851851851852,
+    "meanRepeatsBlockedPerRun": 403.9111111111111
+  },
+  "byRate": {
+    "0.05": {
+      "label": "rate=0.05",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": 0.060607798281784635,
+        "std": 3.194300564225035
+      },
+      "gen1ReturnPct": {
+        "mean": 0.07293805633781893,
+        "std": 3.2390836211568033
+      },
+      "buyHoldReturnPct": {
+        "mean": -2.123786730459427,
+        "std": 5.351747171977661
+      },
+      "pctBeatsGen1": 57.77777777777777,
+      "pctBeatsBuyHold": 50,
+      "meanMaxDrawdownPct": 4.494032577975134,
+      "meanWinRatePct": 24.983070893674622,
+      "signTestVsGen1": {
+        "n": 88,
+        "wins": 52,
+        "pValue": 0.10929542977731574,
+        "winPct": 59.09090909090909
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 45,
+        "pValue": 1,
+        "winPct": 50
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -0.32334698243588916,
+        "high": 0.27924076204482645
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 0.6728474835329551,
+        "high": 3.6495864407117464
+      },
+      "meanGenerationOfConvergence": 11.333333333333334,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 845.3888888888889
+    },
+    "0.25": {
+      "label": "rate=0.25",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": 0.15145761479494976,
+        "std": 3.139792272179216
+      },
+      "gen1ReturnPct": {
+        "mean": 0.07293805633781893,
+        "std": 3.2390836211568033
+      },
+      "buyHoldReturnPct": {
+        "mean": -2.123786730459427,
+        "std": 5.351747171977661
+      },
+      "pctBeatsGen1": 62.22222222222222,
+      "pctBeatsBuyHold": 47.77777777777778,
+      "meanMaxDrawdownPct": 4.381962434987111,
+      "meanWinRatePct": 26.728838441240445,
+      "signTestVsGen1": {
+        "n": 90,
+        "wins": 56,
+        "pValue": 0.026301665131122143,
+        "winPct": 62.22222222222222
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 43,
+        "pValue": 0.7520332015985978,
+        "winPct": 47.77777777777778
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -0.2953141737947131,
+        "high": 0.4363561046729206
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 0.824021034240602,
+        "high": 3.7094605957015143
+      },
+      "meanGenerationOfConvergence": 12.6,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 313.2111111111111
+    },
+    "0.6": {
+      "label": "rate=0.6",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": 0.145678529592814,
+        "std": 3.2388949787377426
+      },
+      "gen1ReturnPct": {
+        "mean": 0.07293805633781893,
+        "std": 3.2390836211568033
+      },
+      "buyHoldReturnPct": {
+        "mean": -2.123786730459427,
+        "std": 5.351747171977661
+      },
+      "pctBeatsGen1": 62.22222222222222,
+      "pctBeatsBuyHold": 48.888888888888886,
+      "meanMaxDrawdownPct": 4.322831719961916,
+      "meanWinRatePct": 26.030515448898353,
+      "signTestVsGen1": {
+        "n": 90,
+        "wins": 56,
+        "pValue": 0.026301665131122143,
+        "winPct": 62.22222222222222
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 44,
+        "pValue": 0.9161288770112974,
+        "winPct": 48.888888888888886
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -0.3395092463780216,
+        "high": 0.4376646528446579
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 0.7332392415383353,
+        "high": 3.7671395544988
+      },
+      "meanGenerationOfConvergence": 12.465116279069768,
+      "convergedFraction": 0.9555555555555556,
+      "meanRepeatsBlockedPerRun": 53.13333333333333
+    }
+  },
+  "byRegime": {
+    "uptrend": {
+      "label": "regime=uptrend",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": 0.09146327998053451,
+        "std": 1.5909985884363853
+      },
+      "gen1ReturnPct": {
+        "mean": -0.3691122997525561,
+        "std": 1.7049668023891644
+      },
+      "buyHoldReturnPct": {
+        "mean": 3.45020243761107,
+        "std": 3.7312065332700195
+      },
+      "pctBeatsGen1": 70,
+      "pctBeatsBuyHold": 11.11111111111111,
+      "meanMaxDrawdownPct": 3.9070235401681646,
+      "meanWinRatePct": 24.071231473225904,
+      "signTestVsGen1": {
+        "n": 89,
+        "wins": 63,
+        "pValue": 0.00010992624937113322,
+        "winPct": 70.78651685393258
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 10,
+        "pValue": 1.0521598690597846e-14,
+        "winPct": 11.11111111111111
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": 0.20364337260312573,
+        "high": 0.7006480128647614
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": -4.001372682797837,
+        "high": -2.7234445144606974
+      },
+      "meanGenerationOfConvergence": 13.818181818181818,
+      "convergedFraction": 0.9777777777777777,
+      "meanRepeatsBlockedPerRun": 337.31111111111113
+    },
+    "downtrend": {
+      "label": "regime=downtrend",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": 0.7061882157062183,
+        "std": 4.536832279946133
+      },
+      "gen1ReturnPct": {
+        "mean": 0.921801991230705,
+        "std": 4.526709883211431
+      },
+      "buyHoldReturnPct": {
+        "mean": -6.737521373999099,
+        "std": 3.6783352608603948
+      },
+      "pctBeatsGen1": 55.55555555555556,
+      "pctBeatsBuyHold": 68.88888888888889,
+      "meanMaxDrawdownPct": 6.065733101448249,
+      "meanWinRatePct": 33.14316080943673,
+      "signTestVsGen1": {
+        "n": 90,
+        "wins": 50,
+        "pValue": 0.34283311942078615,
+        "winPct": 55.55555555555556
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 62,
+        "pValue": 0.00043792219663414737,
+        "winPct": 68.88888888888889
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -0.6817492184345239,
+        "high": 0.23860266552092615
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 5.813878661409361,
+        "high": 8.959264905427917
+      },
+      "meanGenerationOfConvergence": 15.522727272727273,
+      "convergedFraction": 0.9777777777777777,
+      "meanRepeatsBlockedPerRun": 519.4666666666667
+    },
+    "sideways": {
+      "label": "regime=sideways",
+      "n": 90,
+      "finalReturnPct": {
+        "mean": -0.43990755301720474,
+        "std": 2.6034752408598707
+      },
+      "gen1ReturnPct": {
+        "mean": -0.33387552246469243,
+        "std": 2.642602268982117
+      },
+      "buyHoldReturnPct": {
+        "mean": -3.084041254990258,
+        "std": 2.1435765482180216
+      },
+      "pctBeatsGen1": 56.666666666666664,
+      "pctBeatsBuyHold": 66.66666666666666,
+      "meanMaxDrawdownPct": 3.2260700913077547,
+      "meanWinRatePct": 20.52803250115079,
+      "signTestVsGen1": {
+        "n": 89,
+        "wins": 51,
+        "pValue": 0.20311681873649892,
+        "winPct": 57.30337078651685
+      },
+      "signTestVsBuyHold": {
+        "n": 90,
+        "wins": 60,
+        "pValue": 0.002060265680963133,
+        "winPct": 66.66666666666666
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -0.3923270281861203,
+        "high": 0.1836078340451088
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 1.8287019605873673,
+        "high": 3.4791847999486882
+      },
+      "meanGenerationOfConvergence": 7.155555555555556,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 354.9555555555556
+    }
+  },
+  "byRateRegime": {
+    "0.05": {
+      "uptrend": {
+        "label": "rate=0.05,regime=uptrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": -0.05065070460671275,
+          "std": 1.6121222412330667
+        },
+        "gen1ReturnPct": {
+          "mean": -0.3691122997525561,
+          "std": 1.7244527699553227
+        },
+        "buyHoldReturnPct": {
+          "mean": 3.450202437611073,
+          "std": 3.7738502782321204
+        },
+        "pctBeatsGen1": 70,
+        "pctBeatsBuyHold": 13.333333333333334,
+        "meanMaxDrawdownPct": 3.98398793353713,
+        "meanWinRatePct": 24.365920428613926,
+        "signTestVsGen1": {
+          "n": 29,
+          "wins": 21,
+          "pValue": 0.02411954477429401,
+          "winPct": 72.41379310344827
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 4,
+          "pValue": 0.00005947612226009366,
+          "winPct": 13.333333333333334
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.05697647435195816,
+          "high": 0.6672953322771564
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -4.740132383984758,
+          "high": -2.2283588691648304
+        },
+        "meanGenerationOfConvergence": 12.4,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 671.7666666666667
+      },
+      "downtrend": {
+        "label": "rate=0.05,regime=downtrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": 0.7955063194776695,
+          "std": 4.632613365461084
+        },
+        "gen1ReturnPct": {
+          "mean": 0.9218019912307049,
+          "std": 4.5784453902266184
+        },
+        "buyHoldReturnPct": {
+          "mean": -6.737521373999101,
+          "std": 3.720374743089688
+        },
+        "pctBeatsGen1": 56.666666666666664,
+        "pctBeatsBuyHold": 70,
+        "meanMaxDrawdownPct": 6.1976072372758955,
+        "meanWinRatePct": 34.806716975834625,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 17,
+          "pValue": 0.5846647117286956,
+          "winPct": 56.666666666666664
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 21,
+          "pValue": 0.04277394525706789,
+          "winPct": 70
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.8782981284065782,
+          "high": 0.5501250178906569
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 4.6268479135591924,
+          "high": 10.37415261817111
+        },
+        "meanGenerationOfConvergence": 14.766666666666667,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 1103.4333333333334
+      },
+      "sideways": {
+        "label": "rate=0.05,regime=sideways",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": -0.5630322200256034,
+          "std": 2.5060874905483383
+        },
+        "gen1ReturnPct": {
+          "mean": -0.33387552246469254,
+          "std": 2.6728044183914084
+        },
+        "buyHoldReturnPct": {
+          "mean": -3.0840412549902587,
+          "std": 2.1680753613536328
+        },
+        "pctBeatsGen1": 46.666666666666664,
+        "pctBeatsBuyHold": 66.66666666666666,
+        "meanMaxDrawdownPct": 3.300502563112381,
+        "meanWinRatePct": 15.77657527657528,
+        "signTestVsGen1": {
+          "n": 29,
+          "wins": 14,
+          "pValue": 1,
+          "winPct": 48.275862068965516
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 20,
+          "pValue": 0.0987371467053893,
+          "winPct": 66.66666666666666
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.6714183111126689,
+          "high": 0.21630478338575412
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 1.0958166584949234,
+          "high": 3.90762075899829
+        },
+        "meanGenerationOfConvergence": 6.833333333333333,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 760.9666666666667
+      }
+    },
+    "0.25": {
+      "uptrend": {
+        "label": "rate=0.25,regime=uptrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": 0.2697050648433169,
+          "std": 1.6754113323122926
+        },
+        "gen1ReturnPct": {
+          "mean": -0.3691122997525561,
+          "std": 1.7244527699553227
+        },
+        "buyHoldReturnPct": {
+          "mean": 3.450202437611073,
+          "std": 3.7738502782321204
+        },
+        "pctBeatsGen1": 76.66666666666667,
+        "pctBeatsBuyHold": 6.666666666666667,
+        "meanMaxDrawdownPct": 3.8507496144096565,
+        "meanWinRatePct": 25.059066110250658,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 23,
+          "pValue": 0.005222879350185409,
+          "winPct": 76.66666666666667
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 2,
+          "pValue": 8.679926395416278e-7,
+          "winPct": 6.666666666666667
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": 0.2236220256522027,
+          "high": 1.104613102436867
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -4.244035157770912,
+          "high": -2.1264155541848466
+        },
+        "meanGenerationOfConvergence": 15.133333333333333,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 290.2
+      },
+      "downtrend": {
+        "label": "rate=0.25,regime=downtrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": 0.4745141277053349,
+          "std": 4.484834578767998
+        },
+        "gen1ReturnPct": {
+          "mean": 0.9218019912307049,
+          "std": 4.5784453902266184
+        },
+        "buyHoldReturnPct": {
+          "mean": -6.737521373999101,
+          "std": 3.720374743089688
+        },
+        "pctBeatsGen1": 46.666666666666664,
+        "pctBeatsBuyHold": 70,
+        "meanMaxDrawdownPct": 6.198990746307329,
+        "meanWinRatePct": 31.833274749941417,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 14,
+          "pValue": 0.8555355519056358,
+          "winPct": 46.666666666666664
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 21,
+          "pValue": 0.04277394525706789,
+          "winPct": 70
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -1.3307309291085019,
+          "high": 0.3813597718405394
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 4.390348591958515,
+          "high": 9.915896345163265
+        },
+        "meanGenerationOfConvergence": 15.533333333333333,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 393.56666666666666
+      },
+      "sideways": {
+        "label": "rate=0.25,regime=sideways",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": -0.28984634816380345,
+          "std": 2.647665206115624
+        },
+        "gen1ReturnPct": {
+          "mean": -0.33387552246469254,
+          "std": 2.6728044183914084
+        },
+        "buyHoldReturnPct": {
+          "mean": -3.0840412549902587,
+          "std": 2.1680753613536328
+        },
+        "pctBeatsGen1": 63.33333333333333,
+        "pctBeatsBuyHold": 66.66666666666666,
+        "meanMaxDrawdownPct": 3.096146944244356,
+        "meanWinRatePct": 23.294174463529302,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 19,
+          "pValue": 0.20048842206597434,
+          "winPct": 63.33333333333333
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 20,
+          "pValue": 0.0987371467053893,
+          "winPct": 66.66666666666666
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.4740914476838502,
+          "high": 0.577619050460113
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 1.302644744828443,
+          "high": 4.285435091915406
+        },
+        "meanGenerationOfConvergence": 7.133333333333334,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 255.86666666666667
+      }
+    },
+    "0.6": {
+      "uptrend": {
+        "label": "rate=0.6,regime=uptrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": 0.05533547970499915,
+          "std": 1.5189965019433491
+        },
+        "gen1ReturnPct": {
+          "mean": -0.3691122997525561,
+          "std": 1.7244527699553227
+        },
+        "buyHoldReturnPct": {
+          "mean": 3.450202437611073,
+          "std": 3.7738502782321204
+        },
+        "pctBeatsGen1": 63.33333333333333,
+        "pctBeatsBuyHold": 13.333333333333334,
+        "meanMaxDrawdownPct": 3.886333072557705,
+        "meanWinRatePct": 22.788707880813146,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 19,
+          "pValue": 0.20048842206597434,
+          "winPct": 63.33333333333333
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 4,
+          "pValue": 0.00005947612226009366,
+          "winPct": 13.333333333333334
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.09926285291853028,
+          "high": 0.9188275023363462
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -4.643594844531306,
+          "high": -2.111967670849979
+        },
+        "meanGenerationOfConvergence": 13.928571428571429,
+        "convergedFraction": 0.9333333333333333,
+        "meanRepeatsBlockedPerRun": 49.96666666666667
+      },
+      "downtrend": {
+        "label": "rate=0.6,regime=downtrend",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": 0.8485441999356503,
+          "std": 4.637721401564336
+        },
+        "gen1ReturnPct": {
+          "mean": 0.9218019912307049,
+          "std": 4.5784453902266184
+        },
+        "buyHoldReturnPct": {
+          "mean": -6.737521373999101,
+          "std": 3.720374743089688
+        },
+        "pctBeatsGen1": 63.33333333333333,
+        "pctBeatsBuyHold": 66.66666666666666,
+        "meanMaxDrawdownPct": 5.8006013207615155,
+        "meanWinRatePct": 32.789490702534174,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 19,
+          "pValue": 0.20048842206597434,
+          "winPct": 63.33333333333333
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 20,
+          "pValue": 0.0987371467053893,
+          "winPct": 66.66666666666666
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -1.029725236521185,
+          "high": 0.7775432671675478
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 4.617498397879516,
+          "high": 10.449744217826701
+        },
+        "meanGenerationOfConvergence": 16.321428571428573,
+        "convergedFraction": 0.9333333333333333,
+        "meanRepeatsBlockedPerRun": 61.4
+      },
+      "sideways": {
+        "label": "rate=0.6,regime=sideways",
+        "n": 30,
+        "finalReturnPct": {
+          "mean": -0.46684409086220835,
+          "std": 2.733380794773138
+        },
+        "gen1ReturnPct": {
+          "mean": -0.33387552246469254,
+          "std": 2.6728044183914084
+        },
+        "buyHoldReturnPct": {
+          "mean": -3.0840412549902587,
+          "std": 2.1680753613536328
+        },
+        "pctBeatsGen1": 60,
+        "pctBeatsBuyHold": 66.66666666666666,
+        "meanMaxDrawdownPct": 3.281560766566538,
+        "meanWinRatePct": 22.513347763347763,
+        "signTestVsGen1": {
+          "n": 30,
+          "wins": 18,
+          "pValue": 0.36159460805356736,
+          "winPct": 60
+        },
+        "signTestVsBuyHold": {
+          "n": 30,
+          "wins": 20,
+          "pValue": 0.0987371467053893,
+          "winPct": 66.66666666666666
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -0.6833402959580803,
+          "high": 0.4070989782347929
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 1.0895495385267258,
+          "high": 4.102150487818464
+        },
+        "meanGenerationOfConvergence": 7.5,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 48.03333333333333
+      }
+    }
+  },
+  "crashOverall": {
+    "label": "overall (crash stress test)",
+    "n": 90,
+    "finalReturnPct": {
+      "mean": 4.225145737069367,
+      "std": 9.74784930733183
+    },
+    "gen1ReturnPct": {
+      "mean": 5.013075990728148,
+      "std": 13.295605133410442
+    },
+    "buyHoldReturnPct": {
+      "mean": -16.53116403430492,
+      "std": 10.18838923950259
+    },
+    "pctBeatsGen1": 51.11111111111111,
+    "pctBeatsBuyHold": 83.33333333333334,
+    "meanMaxDrawdownPct": 20.341992860246364,
+    "meanWinRatePct": 32.87464494710873,
+    "signTestVsGen1": {
+      "n": 90,
+      "wins": 46,
+      "pValue": 0.9161288770112974,
+      "winPct": 51.11111111111111
+    },
+    "signTestVsBuyHold": {
+      "n": 90,
+      "wins": 75,
+      "pValue": 9.176485495715201e-11,
+      "winPct": 83.33333333333334
+    },
+    "bootstrapCi95VsGen1Pct": {
+      "low": -2.7053046522664665,
+      "high": 1.266933588102518
+    },
+    "bootstrapCi95VsBuyHoldPct": {
+      "low": 16.8043566080271,
+      "high": 24.47198357437374
+    },
+    "meanGenerationOfConvergence": 11.133333333333333,
+    "convergedFraction": 1,
+    "meanRepeatsBlockedPerRun": 78.04444444444445
+  },
+  "crashByRate": {
+    "0.05": {
+      "label": "crash rate=0.05",
+      "n": 30,
+      "finalReturnPct": {
+        "mean": 4.573898427330431,
+        "std": 10.404647947718782
+      },
+      "gen1ReturnPct": {
+        "mean": 5.013075990728144,
+        "std": 13.44755984011736
+      },
+      "buyHoldReturnPct": {
+        "mean": -16.53116403430492,
+        "std": 10.304831754391525
+      },
+      "pctBeatsGen1": 50,
+      "pctBeatsBuyHold": 83.33333333333334,
+      "meanMaxDrawdownPct": 19.822228819758937,
+      "meanWinRatePct": 30.111455908557343,
+      "signTestVsGen1": {
+        "n": 30,
+        "wins": 15,
+        "pValue": 1,
+        "winPct": 50
+      },
+      "signTestVsBuyHold": {
+        "n": 30,
+        "wins": 25,
+        "pValue": 0.00032491423189639937,
+        "winPct": 83.33333333333334
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -4.482613209897896,
+        "high": 3.460700997999312
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 14.343383496757827,
+        "high": 28.09204671187934
+      },
+      "meanGenerationOfConvergence": 9.6,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 130.6
+    },
+    "0.25": {
+      "label": "crash rate=0.25",
+      "n": 30,
+      "finalReturnPct": {
+        "mean": 3.374225403700384,
+        "std": 9.96449986202403
+      },
+      "gen1ReturnPct": {
+        "mean": 5.013075990728144,
+        "std": 13.44755984011736
+      },
+      "buyHoldReturnPct": {
+        "mean": -16.53116403430492,
+        "std": 10.304831754391525
+      },
+      "pctBeatsGen1": 46.666666666666664,
+      "pctBeatsBuyHold": 80,
+      "meanMaxDrawdownPct": 20.594983742116995,
+      "meanWinRatePct": 30.787870208160054,
+      "signTestVsGen1": {
+        "n": 30,
+        "wins": 14,
+        "pValue": 0.8555355519056358,
+        "winPct": 46.666666666666664
+      },
+      "signTestVsBuyHold": {
+        "n": 30,
+        "wins": 24,
+        "pValue": 0.0014309063553810072,
+        "winPct": 80
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -4.497852745285808,
+        "high": 1.224622148744999
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 13.272737947388306,
+        "high": 26.759329557646485
+      },
+      "meanGenerationOfConvergence": 10.7,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 87.36666666666666
+    },
+    "0.6": {
+      "label": "crash rate=0.6",
+      "n": 30,
+      "finalReturnPct": {
+        "mean": 4.72731338017729,
+        "std": 9.106654752463095
+      },
+      "gen1ReturnPct": {
+        "mean": 5.013075990728144,
+        "std": 13.44755984011736
+      },
+      "buyHoldReturnPct": {
+        "mean": -16.53116403430492,
+        "std": 10.304831754391525
+      },
+      "pctBeatsGen1": 56.666666666666664,
+      "pctBeatsBuyHold": 86.66666666666667,
+      "meanMaxDrawdownPct": 20.608766018863182,
+      "meanWinRatePct": 37.724608724608714,
+      "signTestVsGen1": {
+        "n": 30,
+        "wins": 17,
+        "pValue": 0.5846647117286956,
+        "winPct": 56.666666666666664
+      },
+      "signTestVsBuyHold": {
+        "n": 30,
+        "wins": 26,
+        "pValue": 0.00005947612226009366,
+        "winPct": 86.66666666666667
+      },
+      "bootstrapCi95VsGen1Pct": {
+        "low": -3.785810667835768,
+        "high": 3.1621232106061803
+      },
+      "bootstrapCi95VsBuyHoldPct": {
+        "low": 14.64530293585897,
+        "high": 27.875287860390333
+      },
+      "meanGenerationOfConvergence": 13.1,
+      "convergedFraction": 1,
+      "meanRepeatsBlockedPerRun": 16.166666666666668
+    }
+  },
+  "crashByWindowAndRate": {
+    "crash_covid_2020": {
+      "0.05": {
+        "label": "crash crash_covid_2020 rate=0.05",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 14.450082874671153,
+          "std": 7.5214767811710255
+        },
+        "gen1ReturnPct": {
+          "mean": 17.15032650338264,
+          "std": 11.037465600080543
+        },
+        "buyHoldReturnPct": {
+          "mean": -29.9063120457945,
+          "std": 3.744889033148481e-15
+        },
+        "pctBeatsGen1": 50,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 38.14918014740007,
+        "meanWinRatePct": 30.922040922040917,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 5,
+          "pValue": 1,
+          "winPct": 50
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -12.087842075498779,
+          "high": 6.798179527447378
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 40.17532114847742,
+          "high": 48.84623069352448
+        },
+        "meanGenerationOfConvergence": 8.1,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 2.2
+      },
+      "0.25": {
+        "label": "crash crash_covid_2020 rate=0.25",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 14.041829861515831,
+          "std": 3.6130358386446795
+        },
+        "gen1ReturnPct": {
+          "mean": 17.15032650338264,
+          "std": 11.037465600080543
+        },
+        "buyHoldReturnPct": {
+          "mean": -29.9063120457945,
+          "std": 3.744889033148481e-15
+        },
+        "pctBeatsGen1": 40,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 38.927901332553304,
+        "meanWinRatePct": 30.50764050764051,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 4,
+          "pValue": 0.7539062500000021,
+          "winPct": 40
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -9.29930287291844,
+          "high": 3.547099825781739
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 41.407337136544434,
+          "high": 45.66079670523006
+        },
+        "meanGenerationOfConvergence": 7,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 2.7
+      },
+      "0.6": {
+        "label": "crash crash_covid_2020 rate=0.6",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 14.936876532385364,
+          "std": 3.049435774349597
+        },
+        "gen1ReturnPct": {
+          "mean": 17.15032650338264,
+          "std": 11.037465600080543
+        },
+        "buyHoldReturnPct": {
+          "mean": -29.9063120457945,
+          "std": 3.744889033148481e-15
+        },
+        "pctBeatsGen1": 50,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 38.87047274460495,
+        "meanWinRatePct": 27.878787878787882,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 5,
+          "pValue": 1,
+          "winPct": 50
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -9.278410289148928,
+          "high": 5.018340495864256
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 42.83349438085129,
+          "high": 45.910448667382184
+        },
+        "meanGenerationOfConvergence": 9.1,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 1
+      }
+    },
+    "crash_terra_luna_2022": {
+      "0.05": {
+        "label": "crash crash_terra_luna_2022 rate=0.05",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": -5.70233105056025,
+          "std": 5.1818294300597785
+        },
+        "gen1ReturnPct": {
+          "mean": -6.822043813050861,
+          "std": 8.73198860323796
+        },
+        "buyHoldReturnPct": {
+          "mean": -5.393430468699634,
+          "std": 0
+        },
+        "pctBeatsGen1": 60,
+        "pctBeatsBuyHold": 50,
+        "meanMaxDrawdownPct": 12.943408958101866,
+        "meanWinRatePct": 30.219780219780223,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 6,
+          "pValue": 0.7539062500000021,
+          "winPct": 60
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 5,
+          "pValue": 1,
+          "winPct": 50
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -3.4031986263553398,
+          "high": 5.4497985856561755
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -3.2131602535815156,
+          "high": 2.844440421140985
+        },
+        "meanGenerationOfConvergence": 7.5,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 167.6
+      },
+      "0.25": {
+        "label": "crash crash_terra_luna_2022 rate=0.25",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": -7.425897699106409,
+          "std": 3.3586809712632193
+        },
+        "gen1ReturnPct": {
+          "mean": -6.822043813050861,
+          "std": 8.73198860323796
+        },
+        "buyHoldReturnPct": {
+          "mean": -5.393430468699634,
+          "std": 0
+        },
+        "pctBeatsGen1": 60,
+        "pctBeatsBuyHold": 40,
+        "meanMaxDrawdownPct": 13.47537064130197,
+        "meanWinRatePct": 30.48951048951049,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 6,
+          "pValue": 0.7539062500000021,
+          "winPct": 60
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 4,
+          "pValue": 0.7539062500000021,
+          "winPct": 40
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -5.5709083332849065,
+          "high": 3.856429438219338
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -3.9008151542330767,
+          "high": -0.034123147481783356
+        },
+        "meanGenerationOfConvergence": 12,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 117.2
+      },
+      "0.6": {
+        "label": "crash crash_terra_luna_2022 rate=0.6",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": -5.729736119210144,
+          "std": 3.4396762793419544
+        },
+        "gen1ReturnPct": {
+          "mean": -6.822043813050861,
+          "std": 8.73198860323796
+        },
+        "buyHoldReturnPct": {
+          "mean": -5.393430468699634,
+          "std": 0
+        },
+        "pctBeatsGen1": 70,
+        "pctBeatsBuyHold": 60,
+        "meanMaxDrawdownPct": 12.553240502727045,
+        "meanWinRatePct": 30.914085914085916,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 7,
+          "pValue": 0.3437500000000009,
+          "winPct": 70
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 6,
+          "pValue": 0.7539062500000021,
+          "winPct": 60
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -4.605760487289087,
+          "high": 5.540556933546501
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": -2.2372425493402677,
+          "high": 1.7215717181573331
+        },
+        "meanGenerationOfConvergence": 9,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 44.4
+      }
+    },
+    "crash_ftx_2022": {
+      "0.05": {
+        "label": "crash crash_ftx_2022 rate=0.05",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 4.973943457880389,
+          "std": 6.286043360664744
+        },
+        "gen1ReturnPct": {
+          "mean": 4.710945281852656,
+          "std": 8.075117611612955
+        },
+        "buyHoldReturnPct": {
+          "mean": -14.293749588420614,
+          "std": 1.8724445165742407e-15
+        },
+        "pctBeatsGen1": 40,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 8.374097353774875,
+        "meanWinRatePct": 29.192546583850923,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 4,
+          "pValue": 0.7539062500000021,
+          "winPct": 40
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -4.229338311688231,
+          "high": 5.120301030654881
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 15.32366568208096,
+          "high": 22.679237729554153
+        },
+        "meanGenerationOfConvergence": 13.2,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 222
+      },
+      "0.25": {
+        "label": "crash crash_ftx_2022 rate=0.25",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 3.5067440486917265,
+          "std": 6.288026752937941
+        },
+        "gen1ReturnPct": {
+          "mean": 4.710945281852656,
+          "std": 8.075117611612955
+        },
+        "buyHoldReturnPct": {
+          "mean": -14.293749588420614,
+          "std": 1.8724445165742407e-15
+        },
+        "pctBeatsGen1": 40,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 9.381679252495708,
+        "meanWinRatePct": 31.366459627329185,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 4,
+          "pValue": 0.7539062500000021,
+          "winPct": 40
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -3.9083784232074827,
+          "high": 1.5508973326154463
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 14.22184231210274,
+          "high": 21.523813483280257
+        },
+        "meanGenerationOfConvergence": 13.1,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 142.2
+      },
+      "0.6": {
+        "label": "crash crash_ftx_2022 rate=0.6",
+        "n": 10,
+        "finalReturnPct": {
+          "mean": 4.974799727356651,
+          "std": 2.9508312343625165
+        },
+        "gen1ReturnPct": {
+          "mean": 4.710945281852656,
+          "std": 8.075117611612955
+        },
+        "buyHoldReturnPct": {
+          "mean": -14.293749588420614,
+          "std": 1.8724445165742407e-15
+        },
+        "pctBeatsGen1": 50,
+        "pctBeatsBuyHold": 100,
+        "meanMaxDrawdownPct": 10.402584809257537,
+        "meanWinRatePct": 54.38095238095237,
+        "signTestVsGen1": {
+          "n": 10,
+          "wins": 5,
+          "pValue": 1,
+          "winPct": 50
+        },
+        "signTestVsBuyHold": {
+          "n": 10,
+          "wins": 10,
+          "pValue": 0.001953125,
+          "winPct": 100
+        },
+        "bootstrapCi95VsGen1Pct": {
+          "low": -4.862069248770784,
+          "high": 5.522114088067654
+        },
+        "bootstrapCi95VsBuyHoldPct": {
+          "low": 17.657753340489958,
+          "high": 21.148003170974707
+        },
+        "meanGenerationOfConvergence": 21.2,
+        "convergedFraction": 1,
+        "meanRepeatsBlockedPerRun": 3.1
+      }
+    }
+  }
+}
