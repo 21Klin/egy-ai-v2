@@ -99,6 +99,27 @@ export type BlockedEvent = {
   tooSimilarToId: string;
 };
 
+/**
+ * One closed round-trip trade, reported via `evaluateGenome`'s optional
+ * `onTrade` callback (research-experiments use only — see EXPERIMENTS.md).
+ * `returnAfterFeesPct` is the EXACT compounded product of the engine's own
+ * per-bar `strategyReturn` for the bars this trade was held (the bar it
+ * opened on is excluded — that bar's return/fee belongs to whichever trade
+ * was active before it flipped; the bar it closes on is included, since
+ * that is the bar the exit fee is actually charged on). This is not a
+ * simplified entry-to-exit price delta: it is read directly off the same
+ * accounting the live equity curve uses, so it can be hand-verified against
+ * the raw candles exactly as recorded.
+ */
+export type ClosedTrade = {
+  entryIndex: number;
+  exitIndex: number;
+  direction: "long" | "short";
+  entryPrice: number;
+  exitPrice: number;
+  returnAfterFeesPct: number;
+};
+
 export type GenerationSnapshot = {
   generation: number;
   population: Individual[];
@@ -128,8 +149,8 @@ export const POPULATION_SIZE = 24;
 export const ELITE_COUNT = 4;
 export const IMMIGRANT_COUNT = 3;
 const TOURNAMENT_SIZE = 5;
-const MUTATION_RATE = 0.25;
-const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has collapsed
+export const MUTATION_RATE = 0.25;
+export const ELEVATED_MUTATION_RATE = 0.5; // used when the population's diversity has collapsed
 export const DIVERSITY_FLOOR = 0.08; // below this, raise mutation to fight premature convergence
 const TRANSACTION_COST = 0.0010; // 0.10%, matches Binance taker fee
 export const TRAIN_RATIO = 0.7;
@@ -228,8 +249,17 @@ function rsi(closes: number[], period: number): number[] {
  * genome with a short slowMa gets more bars to trade (and more
  * chances to compound) than one with a long slowMa, which isn't a
  * fair comparison for fitness/selection purposes.
+ *
+ * `onTrade` is optional and additive (research-experiments use only — see
+ * EXPERIMENTS.md): when provided, it's called once per CLOSED round-trip
+ * trade with the exact bars/prices/return involved. Omitting it changes
+ * nothing about the trading logic, fitness, or any other return value.
  */
-export function evaluateGenome(genome: Genome, closes: number[]): { fitness: number; netEquity: number; maxDrawdown: number; trades: number; lastPosition: -1 | 0 | 1 } {
+export function evaluateGenome(
+  genome: Genome,
+  closes: number[],
+  onTrade?: (trade: ClosedTrade) => void
+): { fitness: number; netEquity: number; maxDrawdown: number; trades: number; lastPosition: -1 | 0 | 1 } {
   if (genome.fastMa >= genome.slowMa || closes.length < MAX_POSSIBLE_SLOW_MA + 5) {
     return { fitness: FITNESS_FLOOR, netEquity: 1, maxDrawdown: 0, trades: 0, lastPosition: 0 };
   }
@@ -243,6 +273,10 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
   let peak = 1;
   let maxDrawdown = 0;
   let trades = 0;
+
+  // Trade-logging side-channel (only touched when onTrade is passed).
+  let tradeEntryIndex: number | null = null;
+  let tradeEquity = 1;
 
   for (let i = MAX_POSSIBLE_SLOW_MA; i < closes.length; i++) {
     if (Number.isNaN(fast[i]) || Number.isNaN(slow[i]) || Number.isNaN(rsiVals[i])) continue;
@@ -260,15 +294,39 @@ export function evaluateGenome(genome: Genome, closes: number[]): { fitness: num
     if (longSignal) position = 1;
     else if (shortSignal) position = -1;
 
-    if (position !== prevPosition) trades++;
+    const changed = position !== prevPosition;
+    if (changed) trades++;
 
     const ret = closes[i - 1] > 0 ? (closes[i] - closes[i - 1]) / closes[i - 1] : 0;
-    const strategyReturn = prevPosition * ret - (position !== prevPosition ? TRANSACTION_COST : 0);
+    const strategyReturn = prevPosition * ret - (changed ? TRANSACTION_COST : 0);
+
+    if (onTrade && prevPosition !== 0) {
+      // This bar's return/fee belongs to the trade held via prevPosition —
+      // including the exit-fee bar, since that fee is charged here.
+      tradeEquity *= 1 + strategyReturn;
+    }
 
     equity *= 1 + strategyReturn;
     if (equity > peak) peak = equity;
     const drawdown = peak > 0 ? (peak - equity) / peak : 0;
     if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+
+    if (changed) {
+      if (onTrade && prevPosition !== 0 && tradeEntryIndex !== null) {
+        onTrade({
+          entryIndex: tradeEntryIndex,
+          exitIndex: i,
+          direction: prevPosition === 1 ? "long" : "short",
+          entryPrice: closes[tradeEntryIndex],
+          exitPrice: closes[i],
+          returnAfterFeesPct: (tradeEquity - 1) * 100,
+        });
+      }
+      // A new trade begins in `position`'s direction; its P&L starts
+      // accruing from the NEXT bar (this bar's return was the old trade's).
+      tradeEntryIndex = i;
+      tradeEquity = 1;
+    }
   }
 
   const drawdownPenalty = maxDrawdown * 2.0;
@@ -442,7 +500,14 @@ export function evolveGeneration(
   currentPrice: number,
   generation: number,
   graveyard: GraveyardEntry[],
-  quarantine: GraveyardEntry[]
+  quarantine: GraveyardEntry[],
+  /** Research-experiments use only (see EXPERIMENTS.md) — omitted, behavior is identical to before. */
+  options?: {
+    /** Replaces the live default (MUTATION_RATE) as the "normal" rate — still subject to the diversity boost below unless that's also disabled. */
+    mutationRateOverride?: number;
+    /** Pins the mutation rate to mutationRateOverride/MUTATION_RATE every generation, ignoring the diversity-triggered boost — so an experiment that's deliberately varying mutation rate isn't also silently overridden by it. */
+    disableMutationBoost?: boolean;
+  }
 ): {
   nextPopulation: Individual[];
   best: Individual;
@@ -471,7 +536,12 @@ export function evolveGeneration(
 
   const testResult = evaluateGenome(best.genome, testCloses);
   const diversity = populationDiversity(evaluated);
-  const mutationRate = diversity < DIVERSITY_FLOOR ? ELEVATED_MUTATION_RATE : MUTATION_RATE;
+  const baseMutationRate = options?.mutationRateOverride ?? MUTATION_RATE;
+  const mutationRate = options?.disableMutationBoost
+    ? baseMutationRate
+    : diversity < DIVERSITY_FLOOR
+    ? ELEVATED_MUTATION_RATE
+    : baseMutationRate;
 
   const nextGen = generation + 1;
 
