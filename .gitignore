@@ -2,3 +2,9 @@ node_modules
 .next
 .env.local
 firestore.rules.old
+
+# Intermediate experiment data — large, regenerable via download-data.ts /
+# download-crash-data.ts. Only the final chosen windows (CSV) and reports
+# are committed.
+experiments/output/data/raw_history.json
+experiments/output/data/crash_*_raw.json

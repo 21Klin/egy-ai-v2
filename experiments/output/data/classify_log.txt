@@ -1,0 +1,11 @@
+Loaded 105120 candles (2025-11-17T20:55:00.000Z -> 2026-11-17T20:50:00.000Z)
+52 non-overlapping 2000-candle windows available
+uptrend: 4 candidate windows at threshold 6%
+downtrend: 5 candidate windows at threshold -6%
+sideways: 12 candidate windows at threshold 2%
+COVID crash (Black Thursday): biggest drop 57.7% — peak 2020-03-07T16:35:00.000Z -> trough 2020-03-13T02:10:00.000Z
+  window: 2020-03-06T23:30:00.000Z -> 2020-03-13T22:09:59.999Z, return -39.79%, trough inside test segment: true
+Terra/Luna collapse: biggest drop 32.6% — peak 2022-05-04T20:35:00.000Z -> trough 2022-05-12T05:50:00.000Z
+  window: 2022-05-06T03:10:00.000Z -> 2022-05-13T01:49:59.999Z, return -19.42%, trough inside test segment: true
+FTX collapse: biggest drop 27.2% — peak 2022-11-05T04:10:00.000Z -> trough 2022-11-09T22:05:00.000Z
+  window: 2022-11-03T19:25:00.000Z -> 2022-11-10T18:04:59.999Z, return -14.55%, trough inside test segment: true
